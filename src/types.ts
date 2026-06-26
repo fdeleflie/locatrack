@@ -1,0 +1,51 @@
+export type Platform = string;
+
+export interface Transaction {
+  id: string;
+  date: string; // YYYY-MM-DD format for easy sorting
+  amount: number;
+  platform: Platform;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  nights?: number;
+  clientAmount?: number;
+  commission?: number;
+  bankFee?: number;
+  isValidated?: boolean;
+  adults?: number;
+  children?: number;
+  comments?: string;
+}
+
+export interface HouseCost {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+export interface YearlyTaxRates {
+  csgRate: number;
+  taxRate: number;
+  abattementRate: number;
+  chargeParNuit: number;
+  chargeFonciere: number;
+}
+
+export interface Settings {
+  yearlyTaxes: Record<string, YearlyTaxRates>;
+  platforms: Platform[];
+  platformColors: Record<string, string>;
+  houseCosts: HouseCost[];
+  // Deprecated flat settings for migration
+  csgRate?: number;
+  taxRate?: number;
+  abattementRate?: number;
+  chargeParNuit?: number;
+  chargeFonciere?: number;
+}
+
+export interface AppState {
+  transactions: Transaction[];
+  settings: Settings;
+}

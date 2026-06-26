@@ -1,0 +1,8 @@
+{
+  "name": "LocaTrack - Location Saisonnière",
+  "description": "Application de gestion des revenus pour la location saisonnière, incluant un bilan mensuel et annuel, des calculs de taxes, et le suivi du coût de la maison.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

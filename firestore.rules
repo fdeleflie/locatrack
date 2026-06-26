@@ -1,0 +1,19 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if the user is authenticated and authorized
+    function isAuthorized() {
+      return request.auth != null && (
+        request.auth.token.email == "fdeleflie@gmail.com" ||
+        request.auth.token.email == "karine.deleflie@gmail.com" || // Assuming standard format, we can allow the app to add emails
+        request.auth.token.email.matches(".*karine.*deleflie.*") ||
+        exists(/databases/$(database)/documents/authorizedUsers/$(request.auth.token.email))
+      );
+    }
+
+    match /{document=**} {
+      allow read, write: if isAuthorized();
+    }
+  }
+}

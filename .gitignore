@@ -1,1 +1,19 @@
+# Dépendances (générées automatiquement)
+node_modules/
 
+# Fichiers de production (générés lors du build)
+dist/
+dist-ssr/
+
+# Variables d'environnement et secrets (ne jamais publier sur GitHub)
+.env
+.env.*
+*.local
+!.env.example
+
+# Configuration Firebase spécifique à votre session locale
+firebase-applet-config.json
+
+# Fichiers systèmes
+.DS_Store
+Thumbs.db

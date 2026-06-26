@@ -42,6 +42,12 @@ interface StoreContextType {
   removeHouseCost: (id: string) => void;
   importTransactions: (transactions: Transaction[]) => void;
   renamePlatform: (oldName: string, newName: string) => void;
+  clearDatabase: () => Promise<void>;
+  importTransactionsSmart: (
+    importedTxs: Transaction[], 
+    strategy: 'skip' | 'overwrite' | 'all', 
+    importedSettings?: Settings
+  ) => Promise<{ imported: number, skipped: number, updated: number, settingsImported: boolean }>;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -205,6 +211,92 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const clearDatabase = async () => {
+    const docRef = doc(db, 'appData', 'shared');
+    const initialState = {
+      transactions: [],
+      settings: defaultSettings,
+    };
+    await setDoc(docRef, initialState);
+    setState(initialState);
+  };
+
+  const importTransactionsSmart = async (
+    importedTxs: Transaction[],
+    strategy: 'skip' | 'overwrite' | 'all',
+    importedSettings?: Settings
+  ) => {
+    if (!state) return { imported: 0, skipped: 0, updated: 0, settingsImported: false };
+
+    let imported = 0;
+    let skipped = 0;
+    let updated = 0;
+
+    const currentTxs = [...state.transactions];
+    const newTxs: Transaction[] = [];
+
+    for (const tx of importedTxs) {
+      // Clean up transaction from any undefined or invalid structure
+      const cleanTx = {
+        ...tx,
+        id: tx.id || Math.random().toString(36).substring(2, 9),
+        date: tx.date || new Date().toISOString().split('T')[0],
+        amount: typeof tx.amount === 'number' ? tx.amount : parseFloat(tx.amount as any) || 0,
+        platform: tx.platform || 'Airbnb',
+      };
+
+      // Match by exact ID or by combination of date, platform, amount
+      const existingIdx = currentTxs.findIndex(t => 
+        t.id === cleanTx.id || 
+        (t.date === cleanTx.date && t.platform === cleanTx.platform && Math.abs(t.amount - cleanTx.amount) < 0.01)
+      );
+
+      if (existingIdx !== -1) {
+        if (strategy === 'skip') {
+          skipped++;
+        } else if (strategy === 'overwrite') {
+          currentTxs[existingIdx] = { ...currentTxs[existingIdx], ...cleanTx };
+          updated++;
+        } else {
+          // 'all' strategy: generate a new ID and add it
+          const newTx = { 
+            ...cleanTx, 
+            id: Math.random().toString(36).substring(2, 9) 
+          };
+          newTxs.push(newTx);
+          imported++;
+        }
+      } else {
+        // New transaction entirely
+        newTxs.push(cleanTx);
+        imported++;
+      }
+    }
+
+    const mergedTransactions = [...currentTxs, ...newTxs].sort((a, b) => a.date.localeCompare(b.date));
+    
+    let finalSettings = state.settings;
+    let settingsImported = false;
+    if (importedSettings) {
+      finalSettings = {
+        ...state.settings,
+        ...importedSettings,
+        yearlyTaxes: { ...state.settings.yearlyTaxes, ...(importedSettings.yearlyTaxes || {}) },
+        platforms: Array.from(new Set([...state.settings.platforms, ...(importedSettings.platforms || [])])),
+        platformColors: { ...state.settings.platformColors, ...(importedSettings.platformColors || {}) },
+        houseCosts: importedSettings.houseCosts || state.settings.houseCosts
+      };
+      settingsImported = true;
+    }
+
+    await saveState({
+      transactions: mergedTransactions,
+      settings: finalSettings
+    });
+
+    return { imported, skipped, updated, settingsImported };
+  };
+
   if (!state) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -225,6 +317,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         removeHouseCost,
         importTransactions,
         renamePlatform,
+        clearDatabase,
+        importTransactionsSmart,
       }}
     >
       {children}

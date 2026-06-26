@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
 import { useStore } from '../store';
-import { X } from 'lucide-react';
+import { X, Star } from 'lucide-react';
 
 export function EditModal({ transaction, onClose }: { transaction: Transaction, onClose: () => void }) {
   const { state, updateTransaction } = useStore();
@@ -20,6 +20,9 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
   const [children, setChildren] = useState<number | ''>(transaction.children ?? '');
   const [comments, setComments] = useState(transaction.comments || '');
   const [isValidated, setIsValidated] = useState(transaction.isValidated || false);
+  const [rating, setRating] = useState<number>(transaction.rating || 5);
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [validationComment, setValidationComment] = useState<string>(transaction.validationComment || '');
 
   const calculateAmount = (client: string, comm: string, bank: string) => {
     if (!client) return;
@@ -61,6 +64,8 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
       children: typeof children === 'number' ? children : undefined,
       comments: comments || undefined,
       isValidated,
+      rating: isValidated ? rating : undefined,
+      validationComment: isValidated && validationComment ? validationComment : undefined,
     });
     onClose();
   };
@@ -132,17 +137,74 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-center mt-6 pt-4 border-t gap-4">
-            <label className="flex items-center space-x-2 cursor-pointer bg-gray-50 px-4 py-2 rounded-md border border-gray-200">
-              <input
-                type="checkbox"
-                checked={isValidated}
-                onChange={(e) => setIsValidated(e.target.checked)}
-                className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-5 h-5"
-              />
-              <span className="text-sm font-medium text-gray-700">Valider cette réservation</span>
-            </label>
-            <div className="flex gap-3">
+          <div className="mt-6 pt-4 border-t space-y-4">
+            <div className="flex items-center">
+              <label className="flex items-center space-x-2 cursor-pointer bg-gray-50 px-4 py-2 rounded-md border border-gray-200">
+                <input
+                  type="checkbox"
+                  checked={isValidated}
+                  onChange={(e) => setIsValidated(e.target.checked)}
+                  className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-5 h-5"
+                />
+                <span className="text-sm font-medium text-gray-700">Valider cette réservation</span>
+              </label>
+            </div>
+
+            {isValidated && (
+              <div className="bg-emerald-50/50 p-4 rounded-lg border border-emerald-100 space-y-3 animate-fade-in">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Évaluation du séjour (1 à 5 étoiles)
+                  </label>
+                  <div className="flex items-center gap-1.5 py-1">
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const isSelected = star <= (hoverRating !== null ? hoverRating : rating);
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setRating(star)}
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(null)}
+                          className="p-0.5 focus:outline-none transition-transform hover:scale-110"
+                          title={`Évaluer ${star} étoile(s)`}
+                        >
+                          <Star
+                            className={`w-6 h-6 transition-colors ${
+                              isSelected 
+                                ? 'fill-amber-400 text-amber-500' 
+                                : 'text-gray-300 fill-transparent'
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                    <span className="text-xs font-semibold text-amber-600 ml-2">
+                      {rating === 1 && 'Très décevant'}
+                      {rating === 2 && 'Moyen'}
+                      {rating === 3 && 'Bon'}
+                      {rating === 4 && 'Excellent'}
+                      {rating === 5 && 'Parfait'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Commentaire de validation / Avis
+                  </label>
+                  <textarea
+                    placeholder="Saisissez des commentaires sur la propreté, la communication, ou d'autres remarques..."
+                    value={validationComment}
+                    onChange={(e) => setValidationComment(e.target.value)}
+                    rows={2}
+                    className="w-full border border-gray-300 rounded-md py-1.5 px-3 text-sm focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors">Annuler</button>
               <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Enregistrer</button>
             </div>

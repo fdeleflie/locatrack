@@ -3,31 +3,17 @@ import { StoreProvider, useStore } from './store';
 import { DataEntry } from './components/DataEntry';
 import { Dashboard } from './components/Dashboard';
 import { SettingsView } from './components/Settings';
-import { Calculator, Settings, BarChart2, CalendarDays, LogOut } from 'lucide-react';
+import { DataManagement } from './components/DataManagement';
+import { Calculator, Settings, BarChart2, CalendarDays, LogOut, Database } from 'lucide-react';
 import { AuthWrapper } from './Auth';
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
-import importData from './importData.json';
 
-type Tab = 'saisie' | 'synthese' | 'parametres';
+type Tab = 'saisie' | 'synthese' | 'parametres' | 'donnees';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('saisie');
-  const { state, importTransactions } = useStore();
-  
-  useEffect(() => {
-    // Only import if these aren't already imported, we'll just check if 2021 data exists
-    if (state && importData && importData.length > 0) {
-      const has2021 = state.transactions.some(t => t.date.startsWith('2021-'));
-      if (!has2021) {
-         const dataWithIds = importData.map(item => ({
-           ...item,
-           id: Math.random().toString(36).substring(2, 9)
-         }));
-         importTransactions(dataWithIds as any);
-      }
-    }
-  }, [state, importTransactions]);
+  const { state } = useStore();
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -73,6 +59,17 @@ function AppContent() {
                 <Settings className="w-4 h-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">Paramètres</span>
               </button>
+              <button
+                onClick={() => setActiveTab('donnees')}
+                className={`flex items-center px-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'donnees'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                <Database className="w-4 h-4 mr-1 sm:mr-2" />
+                <span>Données</span>
+              </button>
               
               <div className="hidden sm:block border-l border-gray-200 h-6 mx-2"></div>
               
@@ -94,6 +91,7 @@ function AppContent() {
         {activeTab === 'saisie' && <DataEntry />}
         {activeTab === 'synthese' && <Dashboard />}
         {activeTab === 'parametres' && <SettingsView />}
+        {activeTab === 'donnees' && <DataManagement />}
       </main>
     </div>
   );

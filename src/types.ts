@@ -13,6 +13,8 @@ export interface Transaction {
   commission?: number;
   bankFee?: number;
   isValidated?: boolean;
+  rating?: number; // 1 to 5 stars
+  validationComment?: string;
   adults?: number;
   children?: number;
   comments?: string;

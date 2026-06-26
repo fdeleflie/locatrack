@@ -52,6 +52,7 @@ export function SettingsView() {
 
   const [newCostName, setNewCostName] = useState('');
   const [newCostAmount, setNewCostAmount] = useState('');
+  const [deletingCostId, setDeletingCostId] = useState<string | null>(null);
 
   const handleSaveTaxes = () => {
     updateSettings({
@@ -338,12 +339,35 @@ export function SettingsView() {
                   <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{c.name}</td>
                   <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{c.amount.toLocaleString()} €</td>
                   <td className="px-6 py-3 whitespace-nowrap text-right text-sm">
-                    <button
-                      onClick={() => removeHouseCost(c.id)}
-                      className="text-red-500 hover:text-red-700 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {deletingCostId === c.id ? (
+                      <div className="flex items-center justify-end gap-1 bg-red-50 p-1 rounded-md border border-red-200 inline-flex">
+                        <span className="text-xs text-red-700 font-medium mr-1">Supprimer ?</span>
+                        <button
+                          onClick={() => {
+                            removeHouseCost(c.id);
+                            setDeletingCostId(null);
+                          }}
+                          className="bg-red-600 hover:bg-red-700 text-white text-xs px-1.5 py-0.5 rounded transition-colors"
+                          title="Confirmer"
+                        >
+                          Oui
+                        </button>
+                        <button
+                          onClick={() => setDeletingCostId(null)}
+                          className="bg-white hover:bg-gray-100 text-gray-700 text-xs px-1.5 py-0.5 rounded border border-gray-300 transition-colors"
+                          title="Annuler"
+                        >
+                          Non
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeletingCostId(c.id)}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

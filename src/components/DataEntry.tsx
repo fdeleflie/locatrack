@@ -5,6 +5,19 @@ import { Transaction } from '../types';
 import { EditModal } from './EditModal';
 import { ValidationModal } from './ValidationModal';
 
+// Robust UTC date helpers to avoid local timezone shifts
+const parseUTCDate = (dateStr: string) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
+const formatUTCDate = (date: Date) => {
+  const yyyy = date.getUTCFullYear();
+  const mm = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+  const dd = date.getUTCDate().toString().padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export function DataEntry() {
   const { state, addTransaction, removeTransaction, updateTransaction } = useStore();
   
@@ -354,14 +367,20 @@ export function DataEntry() {
                               value={clientAmount}
                               onChange={(e) => {
                                 const newClientAmount = e.target.value;
-                                setPlatformData((prev) => ({
-                                  ...prev,
-                                  [p]: { 
-                                    ...prev[p], 
-                                    clientAmount: newClientAmount, 
-                                    amount: calculateAmount(newClientAmount, commission, bankFee) 
+                                setPlatformData((prev) => {
+                                  const pData = prev[p];
+                                  let newAmount = pData.amount;
+                                  if (newClientAmount) {
+                                    const c = parseFloat(newClientAmount) || 0;
+                                    const c_comm = parseFloat(pData.commission) || 0;
+                                    const c_bank = parseFloat(pData.bankFee) || 0;
+                                    newAmount = (c - c_comm - c_bank).toFixed(2).replace(/\.00$/, '');
                                   }
-                                }));
+                                  return {
+                                    ...prev,
+                                    [p]: { ...pData, clientAmount: newClientAmount, amount: newAmount }
+                                  };
+                                });
                               }}
                               placeholder="Payé par le client (€)"
                               className="w-full border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -374,14 +393,20 @@ export function DataEntry() {
                                 value={commission}
                                 onChange={(e) => {
                                   const val = e.target.value;
-                                  setPlatformData((prev) => ({
-                                    ...prev,
-                                    [p]: { 
-                                      ...prev[p], 
-                                      commission: val, 
-                                      amount: calculateAmount(clientAmount, val, bankFee) 
+                                  setPlatformData((prev) => {
+                                    const pData = prev[p];
+                                    let newAmount = pData.amount;
+                                    if (pData.clientAmount) {
+                                      const c = parseFloat(pData.clientAmount) || 0;
+                                      const c_comm = parseFloat(val) || 0;
+                                      const c_bank = parseFloat(pData.bankFee) || 0;
+                                      newAmount = (c - c_comm - c_bank).toFixed(2).replace(/\.00$/, '');
                                     }
-                                  }));
+                                    return {
+                                      ...prev,
+                                      [p]: { ...pData, commission: val, amount: newAmount }
+                                    };
+                                  });
                                 }}
                                 placeholder="Commission (€)"
                                 className="w-1/2 border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -393,14 +418,20 @@ export function DataEntry() {
                                 value={bankFee}
                                 onChange={(e) => {
                                   const val = e.target.value;
-                                  setPlatformData((prev) => ({
-                                    ...prev,
-                                    [p]: { 
-                                      ...prev[p], 
-                                      bankFee: val, 
-                                      amount: calculateAmount(clientAmount, commission, val) 
+                                  setPlatformData((prev) => {
+                                    const pData = prev[p];
+                                    let newAmount = pData.amount;
+                                    if (pData.clientAmount) {
+                                      const c = parseFloat(pData.clientAmount) || 0;
+                                      const c_comm = parseFloat(pData.commission) || 0;
+                                      const c_bank = parseFloat(val) || 0;
+                                      newAmount = (c - c_comm - c_bank).toFixed(2).replace(/\.00$/, '');
                                     }
-                                  }));
+                                    return {
+                                      ...prev,
+                                      [p]: { ...pData, bankFee: val, amount: newAmount }
+                                    };
+                                  });
                                 }}
                                 placeholder="Frais bancaire (€)"
                                 className="w-1/2 border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -413,10 +444,21 @@ export function DataEntry() {
                               required={checked}
                               value={amount}
                               onChange={(e) => {
-                                setPlatformData((prev) => ({
-                                  ...prev,
-                                  [p]: { ...prev[p], amount: e.target.value }
-                                }));
+                                const newAmount = e.target.value;
+                                setPlatformData((prev) => {
+                                  const pData = prev[p];
+                                  let newCommission = pData.commission;
+                                  if (pData.clientAmount) {
+                                    const c = parseFloat(pData.clientAmount) || 0;
+                                    const a = parseFloat(newAmount) || 0;
+                                    const b = parseFloat(pData.bankFee) || 0;
+                                    newCommission = (c - a - b).toFixed(2).replace(/\.00$/, '');
+                                  }
+                                  return {
+                                    ...prev,
+                                    [p]: { ...pData, amount: newAmount, commission: newCommission }
+                                  };
+                                });
                               }}
                               placeholder="Montant perçu (€)"
                               className="w-full border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -739,11 +781,11 @@ export function DataEntry() {
                 const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
                 // Check if there is a transaction on this date
                 const dayTxs = state.transactions.filter(t => {
-                  const start = new Date(t.date);
-                  const end = new Date(t.date);
-                  end.setDate(end.getDate() + (t.nights || 1) - 1);
-                  const current = new Date(dateStr);
-                  return current >= start && current <= end;
+                  const start = parseUTCDate(t.date);
+                  const end = parseUTCDate(t.date);
+                  end.setUTCDate(end.getUTCDate() + (t.nights || 1) - 1);
+                  const current = parseUTCDate(dateStr);
+                  return current.getTime() >= start.getTime() && current.getTime() <= end.getTime();
                 });
                 
                 return (
@@ -761,9 +803,9 @@ export function DataEntry() {
                       <div className="absolute top-8 left-0 right-0 flex flex-col gap-0.5 z-0">
                         {dayTxs.map(t => {
                           const isStart = t.date === dateStr;
-                          const endD = new Date(t.date);
-                          endD.setDate(endD.getDate() + (t.nights || 1) - 1);
-                          const isEnd = endD.toISOString().split('T')[0] === dateStr;
+                          const endD = parseUTCDate(t.date);
+                          endD.setUTCDate(endD.getUTCDate() + (t.nights || 1) - 1);
+                          const isEnd = formatUTCDate(endD) === dateStr;
                           
                           return (
                             <div 
@@ -780,8 +822,8 @@ export function DataEntry() {
                                 className={`h-3 ${isStart ? 'rounded-l-md' : ''} ${isEnd ? 'rounded-r-md' : ''} relative flex items-center transition-opacity group-hover:opacity-80 shadow-sm`} 
                                 style={{ 
                                   backgroundColor: state.settings.platformColors?.[t.platform] || '#9ca3af',
-                                  marginLeft: isStart ? '2px' : '-2px',
-                                  marginRight: isEnd ? '2px' : '-2px'
+                                  marginLeft: isStart ? '2px' : '-6px',
+                                  marginRight: isEnd ? '2px' : '-6px'
                                 }}
                               >
                                 {isStart && <div className={`w-2 h-2 ${t.isValidated ? 'bg-emerald-500 border-emerald-600' : 'bg-white border-gray-400'} border rounded-full absolute left-0.5 shadow-sm`} />}

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
 import { useStore } from '../store';
-import { X, Star } from 'lucide-react';
+import { X, Star, Trash2 } from 'lucide-react';
 
 export function EditModal({ transaction, onClose }: { transaction: Transaction, onClose: () => void }) {
-  const { state, updateTransaction } = useStore();
+  const { state, updateTransaction, removeTransaction } = useStore();
   
   const [date, setDate] = useState(transaction.date);
   const [amount, setAmount] = useState(transaction.amount.toString());
@@ -23,28 +23,46 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
   const [rating, setRating] = useState<number>(transaction.rating || 5);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [validationComment, setValidationComment] = useState<string>(transaction.validationComment || '');
-
-  const calculateAmount = (client: string, comm: string, bank: string) => {
-    if (!client) return;
-    const c = parseFloat(client) || 0;
-    const c_comm = parseFloat(comm) || 0;
-    const c_bank = parseFloat(bank) || 0;
-    setAmount((c - c_comm - c_bank).toFixed(2));
-  };
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleClientAmountChange = (newClientAmount: string) => {
     setClientAmount(newClientAmount);
-    calculateAmount(newClientAmount, commission, bankFee);
+    if (newClientAmount) {
+      const c = parseFloat(newClientAmount) || 0;
+      const c_comm = parseFloat(commission) || 0;
+      const c_bank = parseFloat(bankFee) || 0;
+      setAmount((c - c_comm - c_bank).toFixed(2).replace(/\.00$/, ''));
+    }
   };
 
   const handleCommissionChange = (newCommission: string) => {
     setCommission(newCommission);
-    calculateAmount(clientAmount, newCommission, bankFee);
+    if (clientAmount) {
+      const c = parseFloat(clientAmount) || 0;
+      const c_comm = parseFloat(newCommission) || 0;
+      const c_bank = parseFloat(bankFee) || 0;
+      setAmount((c - c_comm - c_bank).toFixed(2).replace(/\.00$/, ''));
+    }
   };
 
   const handleBankFeeChange = (newBankFee: string) => {
     setBankFee(newBankFee);
-    calculateAmount(clientAmount, commission, newBankFee);
+    if (clientAmount) {
+      const c = parseFloat(clientAmount) || 0;
+      const c_comm = parseFloat(commission) || 0;
+      const c_bank = parseFloat(newBankFee) || 0;
+      setAmount((c - c_comm - c_bank).toFixed(2).replace(/\.00$/, ''));
+    }
+  };
+
+  const handleAmountChange = (newAmount: string) => {
+    setAmount(newAmount);
+    if (clientAmount) {
+      const c = parseFloat(clientAmount) || 0;
+      const a = parseFloat(newAmount) || 0;
+      const b = parseFloat(bankFee) || 0;
+      setCommission((c - a - b).toFixed(2).replace(/\.00$/, ''));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -132,7 +150,7 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Montant perçu (€)</label>
-                <input type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3" />
+                <input type="number" step="0.01" min="0" required value={amount} onChange={(e) => handleAmountChange(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3" />
               </div>
             </div>
           </div>
@@ -204,9 +222,46 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
               </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors">Annuler</button>
-              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Enregistrer</button>
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-2">
+              <div>
+                {confirmDelete ? (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-red-50 p-2 rounded-md border border-red-200">
+                    <span className="text-sm text-red-700 font-semibold text-center sm:text-left">Supprimer la réservation ?</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          removeTransaction(transaction.id);
+                          onClose();
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm"
+                      >
+                        Oui
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(false)}
+                        className="bg-white hover:bg-gray-100 text-gray-700 text-xs px-3 py-1.5 rounded border border-gray-300 transition-colors"
+                      >
+                        Non
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 rounded-md font-semibold text-sm transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Supprimer la réservation
+                  </button>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors">Annuler</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Enregistrer</button>
+              </div>
             </div>
           </div>
         </form>

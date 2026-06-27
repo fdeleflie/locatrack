@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { Clock, Info, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 export function Dashboard() {
   const { state } = useStore();
@@ -216,6 +217,66 @@ export function Dashboard() {
 
   const remainingInvestment = totalInvestment - totalNetAllYears;
 
+  const currentYearStr = new Date().getFullYear().toString();
+  const formattedToday = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+
+  const [comparisonRefYear, setComparisonRefYear] = useState(() => {
+    const current = new Date().getFullYear().toString();
+    return years.includes(current) ? current : (years[0] || current);
+  });
+
+  const comparisonData = useMemo(() => {
+    const today = new Date();
+    const todayStr = `${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+
+    const isBeforeOrOnTodayMD = (dateStr: string) => {
+      const md = dateStr.substring(5, 10);
+      return md <= todayStr;
+    };
+
+    return years.map(y => {
+      const periodDays = distributedDays.filter(d => d.date.startsWith(y) && isBeforeOrOnTodayMD(d.date));
+      const gross = periodDays.reduce((acc, curr) => acc + curr.amount, 0);
+      const nights = periodDays.length;
+      const blackGross = periodDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+      const declaredGross = gross - blackGross;
+
+      const yTaxes = state.settings.yearlyTaxes?.[y] || state.settings.yearlyTaxes?.[currentYearStr] || {
+        csgRate: 18.6, taxRate: 11, abattementRate: 70, chargeParNuit: 5, chargeFonciere: 383
+      };
+
+      const estimatedTaxes = declaredGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
+      const variableCharges = nights * yTaxes.chargeParNuit;
+
+      // Elapsed days in period of year y
+      const startOfYear = new Date(parseInt(y), 0, 1);
+      const endOfPeriod = new Date(parseInt(y), today.getMonth(), today.getDate());
+      const diffTime = Math.abs(endOfPeriod.getTime() - startOfYear.getTime());
+      const elapsedDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+      const isLeap = (yearNum: number) => (yearNum % 4 === 0 && yearNum % 100 !== 0) || yearNum % 400 === 0;
+      const totalDays = isLeap(parseInt(y)) ? 366 : 365;
+
+      const fixedCharges = yTaxes.chargeFonciere * (elapsedDays / totalDays);
+      const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+
+      const occupancyRate = (nights / elapsedDays) * 100;
+
+      return {
+        year: y,
+        gross: Math.round(gross),
+        nights,
+        occupancyRate: Number(occupancyRate.toFixed(1)),
+        net: Math.round(net),
+        elapsedDays
+      };
+    });
+  }, [years, distributedDays, state.settings, currentYearStr]);
+
+  const referenceYearComparison = useMemo(() => {
+    return comparisonData.find(d => d.year === comparisonRefYear);
+  }, [comparisonData, comparisonRefYear]);
+
   const chartColors = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#9333ea', '#0891b2', '#be123c'];
 
   return (
@@ -259,6 +320,126 @@ export function Dashboard() {
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 lg:col-span-1">
           <p className="text-sm font-medium text-gray-500">Coût Maison</p>
           <p className="mt-2 text-2xl font-bold text-amber-600">{remainingInvestment > 0 ? remainingInvestment.toLocaleString() : 0} €</p>
+        </div>
+      </div>
+
+      {/* Comparatif à date section */}
+      <div className="bg-white rounded-lg shadow-sm border border-blue-100 p-6">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-blue-600" />
+              Comparateur d'avancement à date (du 1er Janvier au {formattedToday})
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Comparez vos performances cumulées de chaque année sur la même période pour savoir si vous êtes en avance ou en retard.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold text-gray-600">Année de référence :</span>
+            <select
+              value={comparisonRefYear}
+              onChange={(e) => setComparisonRefYear(e.target.value)}
+              className="border border-gray-300 rounded-md shadow-sm py-1 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm font-semibold bg-white"
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>Année {y}</option>
+              ))}
+            </select>
+            <div className="bg-blue-50 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 flex items-center gap-1.5 border border-blue-100">
+              <Info className="w-4 h-4 shrink-0" />
+              Proratisation linéaire des charges fixes & impôts au jour près
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full">
+          {/* Table comparison */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 font-semibold">
+                <tr>
+                  <th scope="col" className="px-4 py-2 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider">Année</th>
+                  <th scope="col" className="px-4 py-2 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Nuits cumulées</th>
+                  <th scope="col" className="px-4 py-2 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Taux Occ.</th>
+                  <th scope="col" className="px-4 py-2 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Brut à date</th>
+                  <th scope="col" className="px-4 py-2 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider">Net à date</th>
+                  <th scope="col" className="px-4 py-2 text-center text-[11px] font-bold text-gray-500 uppercase tracking-wider">Écart vs {comparisonRefYear}</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {comparisonData.map((d) => {
+                  const isRef = d.year === comparisonRefYear;
+                  const refNet = referenceYearComparison?.net || 0;
+                  const diff = refNet - d.net;
+                  const pct = d.net !== 0 ? (diff / Math.abs(d.net)) * 100 : 0;
+                  const isAhead = diff >= 0;
+
+                  return (
+                    <tr key={d.year} className={`${isRef ? 'bg-blue-50/50 font-semibold' : 'hover:bg-gray-50/50'}`}>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-sm text-gray-900">
+                        {d.year} {isRef && <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-800 rounded-full font-bold">Référence</span>}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-sm text-gray-700 text-right">{d.nights} nuits</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-sm text-gray-700 text-right">{d.occupancyRate}%</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-sm text-gray-700 text-right">{d.gross.toLocaleString()} €</td>
+                      <td className={`px-4 py-2.5 whitespace-nowrap text-sm text-right font-bold ${isRef ? 'text-blue-700' : 'text-gray-900'}`}>
+                        {d.net.toLocaleString()} €
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs text-center">
+                        {isRef ? (
+                          <span className="text-gray-400 font-normal italic">-</span>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center gap-0.5">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold ${
+                              isAhead ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {isAhead ? `+${diff.toLocaleString()} €` : `${diff.toLocaleString()} €`}
+                            </span>
+                            <span className={`text-[10px] font-bold ${isAhead ? 'text-green-600' : 'text-red-600'}`}>
+                              {isAhead ? 'En avance de +' : 'En retard de '}{pct.toFixed(1)}%
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Visual progress bar comparison chart */}
+        <div className="mt-6 pt-5 border-t border-gray-100">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
+            Visualisation graphique : Revenu Net cumulé au {formattedToday} par année
+          </h4>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={[...comparisonData].reverse()} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="year" axisLine={false} tickLine={false} />
+                <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `${value}€`} />
+                <RechartsTooltip formatter={(value) => [`${value} €`, 'Net cumulé à date']} cursor={{ fill: '#f3f4f6' }} />
+                <Bar 
+                  dataKey="net" 
+                  radius={[4, 4, 0, 0]} 
+                  maxBarSize={50}
+                >
+                  {[...comparisonData].reverse().map((entry, index) => {
+                    const isRef = entry.year === comparisonRefYear;
+                    return (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={isRef ? '#2563eb' : '#10b981'} 
+                      />
+                    );
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

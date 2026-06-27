@@ -370,15 +370,22 @@ export function DataEntry() {
                                 setPlatformData((prev) => {
                                   const pData = prev[p];
                                   let newAmount = pData.amount;
+                                  let newCommission = pData.commission;
                                   if (newClientAmount) {
                                     const c = parseFloat(newClientAmount) || 0;
-                                    const c_comm = parseFloat(pData.commission) || 0;
-                                    const c_bank = parseFloat(pData.bankFee) || 0;
-                                    newAmount = (c - c_comm - c_bank).toFixed(2).replace(/\.00$/, '');
+                                    const a = parseFloat(pData.amount) || 0;
+                                    const comm = parseFloat(pData.commission) || 0;
+                                    const b = parseFloat(pData.bankFee) || 0;
+                                    
+                                    if (pData.amount && !pData.commission) {
+                                      newCommission = (c - a - b).toFixed(2).replace(/\.00$/, '');
+                                    } else {
+                                      newAmount = (c - comm - b).toFixed(2).replace(/\.00$/, '');
+                                    }
                                   }
                                   return {
                                     ...prev,
-                                    [p]: { ...pData, clientAmount: newClientAmount, amount: newAmount }
+                                    [p]: { ...pData, clientAmount: newClientAmount, amount: newAmount, commission: newCommission }
                                   };
                                 });
                               }}
@@ -786,7 +793,7 @@ export function DataEntry() {
                   end.setUTCDate(end.getUTCDate() + (t.nights || 1) - 1);
                   const current = parseUTCDate(dateStr);
                   return current.getTime() >= start.getTime() && current.getTime() <= end.getTime();
-                });
+                }).sort((a, b) => a.id.localeCompare(b.id));
                 
                 return (
                   <div 
@@ -810,7 +817,7 @@ export function DataEntry() {
                           return (
                             <div 
                               key={t.id}
-                              className="py-1.5 px-0.5 cursor-pointer group relative"
+                              className="py-1.5 cursor-pointer group relative"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingId(t.id);
@@ -822,8 +829,8 @@ export function DataEntry() {
                                 className={`h-3 ${isStart ? 'rounded-l-md' : ''} ${isEnd ? 'rounded-r-md' : ''} relative flex items-center transition-opacity group-hover:opacity-80 shadow-sm`} 
                                 style={{ 
                                   backgroundColor: state.settings.platformColors?.[t.platform] || '#9ca3af',
-                                  marginLeft: isStart ? '2px' : '-6px',
-                                  marginRight: isEnd ? '2px' : '-6px'
+                                  marginLeft: isStart ? '2px' : '-2px',
+                                  marginRight: isEnd ? '2px' : '-2px'
                                 }}
                               >
                                 {isStart && <div className={`w-2 h-2 ${t.isValidated ? 'bg-emerald-500 border-emerald-600' : 'bg-white border-gray-400'} border rounded-full absolute left-0.5 shadow-sm`} />}

@@ -4,14 +4,9 @@ import { useStore } from '../store';
 import { X, Star, Trash2 } from 'lucide-react';
 
 export function EditModal({ transaction, onClose }: { transaction: Transaction, onClose: () => void }) {
-  const { state, updateTransaction, removeTransaction } = useStore();
+  const { state, updateTransaction, removeTransaction, addTransaction } = useStore();
   
   const [date, setDate] = useState(transaction.date);
-  const [amount, setAmount] = useState(transaction.amount.toString());
-  const [clientAmount, setClientAmount] = useState(transaction.clientAmount?.toString() || '');
-  const [commission, setCommission] = useState(transaction.commission?.toString() || '');
-  const [bankFee, setBankFee] = useState(transaction.bankFee?.toString() || '');
-  const [platform, setPlatform] = useState(transaction.platform);
   const [firstName, setFirstName] = useState(transaction.firstName || '');
   const [lastName, setLastName] = useState(transaction.lastName || '');
   const [phone, setPhone] = useState(transaction.phone || '');
@@ -25,65 +20,84 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
   const [validationComment, setValidationComment] = useState<string>(transaction.validationComment || '');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const handleClientAmountChange = (newClientAmount: string) => {
-    setClientAmount(newClientAmount);
-    if (newClientAmount) {
-      const c = parseFloat(newClientAmount) || 0;
-      const c_comm = parseFloat(commission) || 0;
-      const c_bank = parseFloat(bankFee) || 0;
-      setAmount((c - c_comm - c_bank).toFixed(2).replace(/\.00$/, ''));
-    }
-  };
-
-  const handleCommissionChange = (newCommission: string) => {
-    setCommission(newCommission);
-    if (clientAmount) {
-      const c = parseFloat(clientAmount) || 0;
-      const c_comm = parseFloat(newCommission) || 0;
-      const c_bank = parseFloat(bankFee) || 0;
-      setAmount((c - c_comm - c_bank).toFixed(2).replace(/\.00$/, ''));
-    }
-  };
-
-  const handleBankFeeChange = (newBankFee: string) => {
-    setBankFee(newBankFee);
-    if (clientAmount) {
-      const c = parseFloat(clientAmount) || 0;
-      const c_comm = parseFloat(commission) || 0;
-      const c_bank = parseFloat(newBankFee) || 0;
-      setAmount((c - c_comm - c_bank).toFixed(2).replace(/\.00$/, ''));
-    }
-  };
-
-  const handleAmountChange = (newAmount: string) => {
-    setAmount(newAmount);
-    if (clientAmount) {
-      const c = parseFloat(clientAmount) || 0;
-      const a = parseFloat(newAmount) || 0;
-      const b = parseFloat(bankFee) || 0;
-      setCommission((c - a - b).toFixed(2).replace(/\.00$/, ''));
-    }
-  };
+  // Group all siblings that share the exact date and nights
+  const [platformData, setPlatformData] = useState<Record<string, {
+    id?: string;
+    checked: boolean;
+    amount: string;
+    clientAmount: string;
+    commission: string;
+    bankFee: string;
+  }>>(() => {
+    const initial: Record<string, any> = {};
+    const siblings = state.transactions.filter(t => t.date === transaction.date && t.nights === transaction.nights);
+    state.settings.platforms.forEach(p => {
+      const existing = siblings.find(t => t.platform === p);
+      initial[p] = { 
+        id: existing?.id,
+        checked: !!existing, 
+        amount: existing?.amount?.toString() || '', 
+        clientAmount: existing?.clientAmount?.toString() || '', 
+        commission: existing?.commission?.toString() || '', 
+        bankFee: existing?.bankFee?.toString() || ''
+      };
+    });
+    return initial;
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateTransaction(transaction.id, {
-      date,
-      amount: parseFloat(amount),
-      clientAmount: clientAmount ? parseFloat(clientAmount) : undefined,
-      commission: commission ? parseFloat(commission) : undefined,
-      bankFee: bankFee ? parseFloat(bankFee) : undefined,
-      platform,
-      firstName: firstName || undefined,
-      lastName: lastName || undefined,
-      phone: phone || undefined,
-      nights,
-      adults: typeof adults === 'number' ? adults : undefined,
-      children: typeof children === 'number' ? children : undefined,
-      comments: comments || undefined,
-      isValidated,
-      rating: isValidated ? rating : undefined,
-      validationComment: isValidated && validationComment ? validationComment : undefined,
+    Object.entries(platformData).forEach(([plat, data]: [string, any]) => {
+      if (data.checked && data.amount) {
+        if (data.id) {
+          updateTransaction(data.id, {
+            date,
+            amount: parseFloat(data.amount),
+            clientAmount: data.clientAmount ? parseFloat(data.clientAmount) : undefined,
+            commission: data.commission ? parseFloat(data.commission) : undefined,
+            bankFee: data.bankFee ? parseFloat(data.bankFee) : undefined,
+            platform: plat,
+            firstName: firstName || undefined,
+            lastName: lastName || undefined,
+            phone: phone || undefined,
+            nights,
+            adults: typeof adults === 'number' ? adults : undefined,
+            children: typeof children === 'number' ? children : undefined,
+            comments: comments || undefined,
+            isValidated,
+            rating: isValidated ? rating : undefined,
+            validationComment: isValidated && validationComment ? validationComment : undefined,
+          });
+        } else {
+          addTransaction({
+            date,
+            amount: parseFloat(data.amount),
+            clientAmount: data.clientAmount ? parseFloat(data.clientAmount) : undefined,
+            commission: data.commission ? parseFloat(data.commission) : undefined,
+            bankFee: data.bankFee ? parseFloat(data.bankFee) : undefined,
+            platform: plat,
+            firstName: firstName || undefined,
+            lastName: lastName || undefined,
+            phone: phone || undefined,
+            nights,
+            adults: typeof adults === 'number' ? adults : undefined,
+            children: typeof children === 'number' ? children : undefined,
+            comments: comments || undefined,
+            isValidated,
+            rating: isValidated ? rating : undefined,
+            validationComment: isValidated && validationComment ? validationComment : undefined,
+          });
+        }
+      } else if (data.id && !data.checked) {
+        removeTransaction(data.id);
+      }
+    });
+    onClose();
+  };
+
+  const handleDeleteAll = () => {
+    Object.values(platformData).forEach((data: any) => {
+      if (data.id) removeTransaction(data.id);
     });
     onClose();
   };
@@ -128,30 +142,150 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Plateforme et Montant</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Plateforme</label>
-                <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3">
-                  {state.settings.platforms.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Payé par le client (€)</label>
-                <input type="number" step="0.01" min="0" value={clientAmount} onChange={(e) => handleClientAmountChange(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Commission (€)</label>
-                <input type="number" step="0.01" min="0" value={commission} onChange={(e) => handleCommissionChange(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Frais bancaire (€)</label>
-                <input type="number" step="0.01" min="0" value={bankFee} onChange={(e) => handleBankFeeChange(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Montant perçu (€)</label>
-                <input type="number" step="0.01" min="0" required value={amount} onChange={(e) => handleAmountChange(e.target.value)} className="w-full border border-gray-300 rounded-md py-2 px-3" />
-              </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Plateformes (sélectionnez et saisissez le montant)</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {state.settings.platforms.map((p) => {
+                const checked = platformData[p]?.checked || false;
+                const amount = platformData[p]?.amount || '';
+                const clientAmount = platformData[p]?.clientAmount || '';
+                const commission = platformData[p]?.commission || '';
+                const bankFee = platformData[p]?.bankFee || '';
+                const color = state.settings.platformColors?.[p] || '#ccc';
+                
+                return (
+                  <div key={p} className="flex flex-col bg-gray-50 border border-gray-200 rounded-md p-3">
+                    <label className="flex items-center space-x-2 cursor-pointer mb-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setPlatformData((prev) => ({
+                            ...prev,
+                            [p]: { ...prev[p], checked: e.target.checked }
+                          }));
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        style={{ accentColor: color }}
+                      />
+                      <span className="text-sm font-medium text-gray-800" style={{ color: checked ? color : 'inherit' }}>{p}</span>
+                    </label>
+                    {checked && (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={clientAmount}
+                          onChange={(e) => {
+                            const newClientAmount = e.target.value;
+                            setPlatformData((prev) => {
+                              const pData = prev[p];
+                              let newAmount = pData.amount;
+                              let newCommission = pData.commission;
+                              if (newClientAmount) {
+                                const c = parseFloat(newClientAmount) || 0;
+                                const a = parseFloat(pData.amount) || 0;
+                                const comm = parseFloat(pData.commission) || 0;
+                                const b = parseFloat(pData.bankFee) || 0;
+                                
+                                if (pData.amount && !pData.commission) {
+                                  newCommission = (c - a - b).toFixed(2).replace(/\.00$/, '');
+                                } else {
+                                  newAmount = (c - comm - b).toFixed(2).replace(/\.00$/, '');
+                                }
+                              }
+                              return {
+                                ...prev,
+                                [p]: { ...pData, clientAmount: newClientAmount, amount: newAmount, commission: newCommission }
+                              };
+                            });
+                          }}
+                          placeholder="Payé par le client (€)"
+                          className="w-full border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={commission}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPlatformData((prev) => {
+                                const pData = prev[p];
+                                let newAmount = pData.amount;
+                                if (pData.clientAmount) {
+                                  const c = parseFloat(pData.clientAmount) || 0;
+                                  const c_comm = parseFloat(val) || 0;
+                                  const c_bank = parseFloat(pData.bankFee) || 0;
+                                  newAmount = (c - c_comm - c_bank).toFixed(2).replace(/\.00$/, '');
+                                }
+                                return {
+                                  ...prev,
+                                  [p]: { ...pData, commission: val, amount: newAmount }
+                                };
+                              });
+                            }}
+                            placeholder="Commission (€)"
+                            className="w-1/2 border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={bankFee}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPlatformData((prev) => {
+                                const pData = prev[p];
+                                let newAmount = pData.amount;
+                                if (pData.clientAmount) {
+                                  const c = parseFloat(pData.clientAmount) || 0;
+                                  const c_comm = parseFloat(pData.commission) || 0;
+                                  const c_bank = parseFloat(val) || 0;
+                                  newAmount = (c - c_comm - c_bank).toFixed(2).replace(/\.00$/, '');
+                                }
+                                return {
+                                  ...prev,
+                                  [p]: { ...pData, bankFee: val, amount: newAmount }
+                                };
+                              });
+                            }}
+                            placeholder="Frais bancaire (€)"
+                            className="w-1/2 border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                          />
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required={checked}
+                          value={amount}
+                          onChange={(e) => {
+                            const newAmount = e.target.value;
+                            setPlatformData((prev) => {
+                              const pData = prev[p];
+                              let newCommission = pData.commission;
+                              if (pData.clientAmount) {
+                                const c = parseFloat(pData.clientAmount) || 0;
+                                const a = parseFloat(newAmount) || 0;
+                                const b = parseFloat(pData.bankFee) || 0;
+                                newCommission = (c - a - b).toFixed(2).replace(/\.00$/, '');
+                              }
+                              return {
+                                ...prev,
+                                [p]: { ...pData, amount: newAmount, commission: newCommission }
+                              };
+                            });
+                          }}
+                          placeholder="Montant perçu (€)"
+                          className="w-full border border-gray-300 rounded-md shadow-sm py-1.5 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -230,10 +364,7 @@ export function EditModal({ transaction, onClose }: { transaction: Transaction, 
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          removeTransaction(transaction.id);
-                          onClose();
-                        }}
+                        onClick={handleDeleteAll}
                         className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm"
                       >
                         Oui

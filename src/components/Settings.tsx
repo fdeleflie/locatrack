@@ -333,59 +333,83 @@ export function SettingsView() {
                   </div>
 
                   {!isEditing && (
-                    <div className="mt-2 pt-2 border-t border-gray-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs">
+                    <div className="mt-2 pt-2 border-t border-gray-200 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            id={`fee-active-${p}`}
+                            checked={settings.platformFees?.[p]?.active || false}
+                            onChange={(e) => {
+                              updateSettings({
+                                platformFees: {
+                                  ...settings.platformFees,
+                                  [p]: {
+                                    percentage:
+                                      settings.platformFees?.[p]?.percentage || 0,
+                                    active: e.target.checked,
+                                  },
+                                },
+                              });
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                          />
+                          <label
+                            htmlFor={`fee-active-${p}`}
+                            className="text-gray-600 cursor-pointer"
+                          >
+                            Calcul auto. des frais
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            step="0.1"
+                            placeholder="0"
+                            value={settings.platformFees?.[p]?.percentage || ""}
+                            onChange={(e) => {
+                              updateSettings({
+                                platformFees: {
+                                  ...settings.platformFees,
+                                  [p]: {
+                                    active:
+                                      settings.platformFees?.[p]?.active || false,
+                                    percentage: parseFloat(e.target.value) || 0,
+                                  },
+                                },
+                              });
+                            }}
+                            disabled={!settings.platformFees?.[p]?.active}
+                            className="w-16 border border-gray-300 rounded py-0.5 px-1.5 text-xs focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                          />
+                          <span
+                            className={`text-xs ${settings.platformFees?.[p]?.active ? "text-gray-700" : "text-gray-400"}`}
+                          >
+                            %
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs pt-1 border-t border-gray-100">
                         <input
                           type="checkbox"
-                          id={`fee-active-${p}`}
-                          checked={settings.platformFees?.[p]?.active || false}
+                          id={`exclude-fiscal-${p}`}
+                          checked={settings.platformExcludeFiscal?.[p] || false}
                           onChange={(e) => {
                             updateSettings({
-                              platformFees: {
-                                ...settings.platformFees,
-                                [p]: {
-                                  percentage:
-                                    settings.platformFees?.[p]?.percentage || 0,
-                                  active: e.target.checked,
-                                },
+                              platformExcludeFiscal: {
+                                ...settings.platformExcludeFiscal,
+                                [p]: e.target.checked,
                               },
                             });
                           }}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
                         />
                         <label
-                          htmlFor={`fee-active-${p}`}
+                          htmlFor={`exclude-fiscal-${p}`}
                           className="text-gray-600 cursor-pointer"
                         >
-                          Calcul auto. des frais
+                          Exclure du calcul du revenu fiscal
                         </label>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="0"
-                          value={settings.platformFees?.[p]?.percentage || ""}
-                          onChange={(e) => {
-                            updateSettings({
-                              platformFees: {
-                                ...settings.platformFees,
-                                [p]: {
-                                  active:
-                                    settings.platformFees?.[p]?.active || false,
-                                  percentage: parseFloat(e.target.value) || 0,
-                                },
-                              },
-                            });
-                          }}
-                          disabled={!settings.platformFees?.[p]?.active}
-                          className="w-16 border border-gray-300 rounded py-0.5 px-1.5 text-xs focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                        />
-                        <span
-                          className={`text-xs ${settings.platformFees?.[p]?.active ? "text-gray-700" : "text-gray-400"}`}
-                        >
-                          %
-                        </span>
                       </div>
                     </div>
                   )}

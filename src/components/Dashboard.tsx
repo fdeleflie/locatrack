@@ -18,7 +18,10 @@ export function Dashboard() {
     state.transactions.forEach(t => {
       const nights = t.nights || 1;
       const dailyAmount = t.amount / nights;
-      const fiscalAmount = (t.clientAmount !== undefined && t.clientAmount !== null && !isNaN(t.clientAmount) && t.clientAmount > 0) ? t.clientAmount : t.amount;
+      let fiscalAmount = (t.clientAmount !== undefined && t.clientAmount !== null && !isNaN(t.clientAmount) && t.clientAmount > 0) ? t.clientAmount : t.amount;
+      if (state.settings.platformExcludeFiscal?.[t.platform]) {
+        fiscalAmount = 0;
+      }
       const dailyFiscalAmount = fiscalAmount / nights;
       const current = new Date(t.date);
       for (let i = 0; i < nights; i++) {
@@ -32,7 +35,7 @@ export function Dashboard() {
       }
     });
     return days;
-  }, [state.transactions]);
+  }, [state.transactions, state.settings.platformExcludeFiscal]);
 
   const yearData = useMemo(() => {
     const yearDays = distributedDays.filter((d) => d.date.startsWith(selectedYear));
@@ -73,7 +76,7 @@ export function Dashboard() {
     const totalCharges = variableCharges + fixedCharges;
 
     // Taxes (Micro-BIC estimation according to user's exact formula)
-    const blackGross = yearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+    const blackGross = yearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
     const declaredGross = gross - blackGross;
     
     // User formula: (AG61+AH61+AJ61)*AH68/100*AH70/100
@@ -84,7 +87,7 @@ export function Dashboard() {
     const netNet = net; // Keeping variable for compatibility if used elsewhere
 
     // Previous year net
-    const prevBlackGross = previousYearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+    const prevBlackGross = previousYearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
     const prevDeclaredGross = previousGross - prevBlackGross;
     const prevVariableCharges = previousNights * prevYearTaxes.chargeParNuit;
     const prevTotalCharges = prevVariableCharges + prevYearTaxes.chargeFonciere;
@@ -151,7 +154,7 @@ export function Dashboard() {
     const variableCharges = nights * currentYearTaxes.chargeParNuit;
     const fixedCharges = currentYearTaxes.chargeFonciere;
 
-    const blackGross = yearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+    const blackGross = yearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
     const declaredGross = gross - blackGross;
     const estimatedTaxes = declaredGross * (currentYearTaxes.abattementRate / 100) * (currentYearTaxes.csgRate / 100);
     const net = gross - estimatedTaxes - variableCharges - fixedCharges;
@@ -193,7 +196,7 @@ export function Dashboard() {
       const yDays = distributedDays.filter(d => d.date.startsWith(y));
       const nights = yDays.length;
       const gross = yDays.reduce((acc, curr) => acc + curr.amount, 0);
-      const blackGross = yDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+      const blackGross = yDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
       const declaredGross = gross - blackGross;
       
       const yTaxes = state.settings.yearlyTaxes?.[y] || state.settings.yearlyTaxes?.[new Date().getFullYear().toString()] || {
@@ -233,7 +236,7 @@ export function Dashboard() {
         const nights = days.length;
         const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
         
-        const blackGross = days.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+        const blackGross = days.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
         const declaredGross = gross - blackGross;
         
         const yTaxes = state.settings.yearlyTaxes?.[y] || state.settings.yearlyTaxes?.[new Date().getFullYear().toString()] || {
@@ -283,7 +286,7 @@ export function Dashboard() {
       const periodDays = distributedDays.filter(d => d.date.startsWith(y) && isBeforeOrOnTodayMD(d.date));
       const gross = periodDays.reduce((acc, curr) => acc + curr.amount, 0);
       const nights = periodDays.length;
-      const blackGross = periodDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+      const blackGross = periodDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
       const declaredGross = gross - blackGross;
 
       const yTaxes = state.settings.yearlyTaxes?.[y] || state.settings.yearlyTaxes?.[currentYearStr] || {

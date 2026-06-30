@@ -94,18 +94,10 @@ export function Dashboard() {
     const gainNet = net - prevNet;
     const gainNetPercent = prevNet > 0 ? (gainNet / prevNet) * 100 : 0;
 
-    const isCurrentYear = selectedYear === new Date().getFullYear().toString();
     let daysInYear = 365;
-    if (isCurrentYear) {
-      const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-      const today = new Date();
-      const diffTime = Math.abs(today.getTime() - startOfYear.getTime());
-      daysInYear = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    } else {
-      const yearNum = parseInt(selectedYear);
-      if ((yearNum % 4 === 0 && yearNum % 100 !== 0) || yearNum % 400 === 0) {
-        daysInYear = 366;
-      }
+    const yearNum = parseInt(selectedYear);
+    if ((yearNum % 4 === 0 && yearNum % 100 !== 0) || yearNum % 400 === 0) {
+      daysInYear = 366;
     }
     
     const occupancyRate = (nights / Math.max(1, daysInYear)) * 100;
@@ -121,6 +113,67 @@ export function Dashboard() {
       gainNet,
       gainNetPercent,
       yearDays
+    };
+  }, [distributedDays, selectedYear, state.settings]);
+
+  const yearDataToDate = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const yearDays = distributedDays.filter((d) => d.date.startsWith(selectedYear) && d.date <= today);
+    const previousYearStr = (parseInt(selectedYear) - 1).toString();
+    const prevToday = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
+    const previousYearDays = distributedDays.filter((d) => d.date.startsWith(previousYearStr) && d.date <= prevToday);
+
+    const nights = yearDays.length;
+    const gross = yearDays.reduce((acc, curr) => acc + curr.amount, 0);
+    const fiscalGross = yearDays.reduce((acc, curr) => acc + curr.fiscalAmount, 0);
+    
+    const previousGross = previousYearDays.reduce((acc, curr) => acc + curr.amount, 0);
+    const previousNights = previousYearDays.length;
+
+    // Platform breakdown
+    const platformStats: Record<string, { nights: number; gross: number }> = {};
+    state.settings.platforms.forEach(p => {
+      platformStats[p] = { nights: 0, gross: 0 };
+    });
+    
+    yearDays.forEach(d => {
+      if (!platformStats[d.platform]) {
+        platformStats[d.platform] = { nights: 0, gross: 0 };
+      }
+      platformStats[d.platform].nights += 1;
+      platformStats[d.platform].gross += d.amount;
+    });
+
+    const currentYearTaxes = state.settings.yearlyTaxes?.[selectedYear] || state.settings.yearlyTaxes?.[new Date().getFullYear().toString()] || {
+      csgRate: 18.6, taxRate: 11, abattementRate: 70, chargeParNuit: 5, chargeFonciere: 383
+    };
+
+    const variableCharges = nights * currentYearTaxes.chargeParNuit;
+    const fixedCharges = currentYearTaxes.chargeFonciere;
+
+    const blackGross = yearDays.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black').reduce((acc, curr) => acc + curr.amount, 0);
+    const declaredGross = gross - blackGross;
+    const estimatedTaxes = declaredGross * (currentYearTaxes.abattementRate / 100) * (currentYearTaxes.csgRate / 100);
+    const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+
+    const startOfYear = new Date(parseInt(selectedYear), 0, 1);
+    let todayDate = new Date();
+    if (selectedYear !== todayDate.getFullYear().toString()) {
+        todayDate = new Date(parseInt(selectedYear), 11, 31);
+    }
+    const diffTime = Math.max(0, todayDate.getTime() - startOfYear.getTime());
+    let daysElapsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    
+    if (daysElapsed === 0) daysElapsed = 1;
+    const occupancyRate = (nights / daysElapsed) * 100;
+
+    return {
+      nights,
+      gross,
+      fiscalGross,
+      net,
+      platformStats,
+      occupancyRate
     };
   }, [distributedDays, selectedYear, state.settings]);
 
@@ -152,18 +205,10 @@ export function Dashboard() {
       const estimatedTaxes = declaredGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
       const net = gross - estimatedTaxes - variableCharges - fixedCharges;
       
-      const isCurrentYear = y === new Date().getFullYear().toString();
       let daysInYear = 365;
-      if (isCurrentYear) {
-        const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-        const today = new Date();
-        const diffTime = Math.abs(today.getTime() - startOfYear.getTime());
-        daysInYear = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      } else {
-        const yearNum = parseInt(y);
-        if ((yearNum % 4 === 0 && yearNum % 100 !== 0) || yearNum % 400 === 0) {
-          daysInYear = 366;
-        }
+      const yearNum = parseInt(y);
+      if ((yearNum % 4 === 0 && yearNum % 100 !== 0) || yearNum % 400 === 0) {
+        daysInYear = 366;
       }
       const occupancyRate = (nights / Math.max(1, daysInYear)) * 100;
       
@@ -524,70 +569,97 @@ export function Dashboard() {
             <h3 className="text-lg font-medium text-gray-900">Bilan détaillé {selectedYear}</h3>
           </div>
           <table className="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 w-1/3">Indicateur</th>
+                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900 w-1/3">Projeté</th>
+                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900 w-1/3">À date</th>
+              </tr>
+            </thead>
             <tbody className="bg-white divide-y divide-gray-200">
+              <tr>
+                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">Taux d'occupation</td>
+                <td className="px-6 py-3 text-sm text-center text-gray-900">{yearData.occupancyRate.toFixed(1)} %</td>
+                <td className="px-6 py-3 text-sm text-center text-gray-900 bg-gray-50/50">{yearDataToDate.occupancyRate.toFixed(1)} %</td>
+              </tr>
               {/* Platform breakdown */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">Répartition</td>
-                <td className="px-6 py-3 text-sm text-gray-500">
-                  <div className="flex gap-4 font-medium text-gray-700">
-                    {state.settings.platforms.map(p => (
-                      <div key={p} className="flex-1 text-center border-b border-gray-200 pb-1" style={{ color: state.settings.platformColors?.[p] }}>
-                        {p}
-                      </div>
-                    ))}
+                <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                  <div className="flex flex-col gap-1">
+                    <span className="font-semibold mb-1 border-b border-gray-200 pb-1">Plateformes</span>
+                    <span className="text-gray-500">Nb nuits</span>
+                    <span className="text-gray-500">Revenus brut</span>
                   </div>
                 </td>
-              </tr>
-              <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">Nb nuits</td>
-                <td className="px-6 py-3 text-sm text-gray-500">
-                  <div className="flex gap-4">
-                    {state.settings.platforms.map(p => (
-                      <div key={p} className="flex-1 text-center">{yearData.platformStats[p]?.nights || 0}</div>
-                    ))}
-                  </div>
+                <td className="px-6 py-3 text-sm text-gray-500 text-center">
+                   <div className="flex flex-col gap-1">
+                     <div className="flex gap-2 font-medium border-b border-gray-200 pb-1 text-gray-700 justify-center">
+                       {state.settings.platforms.map(p => <div key={p} className="flex-1 text-center" style={{ color: state.settings.platformColors?.[p] }}>{p.substring(0, 3)}</div>)}
+                     </div>
+                     <div className="flex gap-2 justify-center">
+                       {state.settings.platforms.map(p => <div key={p} className="flex-1 text-center text-gray-900">{yearData.platformStats[p]?.nights || 0}</div>)}
+                     </div>
+                     <div className="flex gap-2 justify-center">
+                       {state.settings.platforms.map(p => <div key={p} className="flex-1 text-center text-gray-900">{Math.round(yearData.platformStats[p]?.gross || 0)}</div>)}
+                     </div>
+                   </div>
                 </td>
-              </tr>
-              <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">Revenus</td>
-                <td className="px-6 py-3 text-sm text-gray-500">
-                  <div className="flex gap-4">
-                    {state.settings.platforms.map(p => (
-                      <div key={p} className="flex-1 text-center">{Math.round(yearData.platformStats[p]?.gross || 0)}</div>
-                    ))}
-                  </div>
+                <td className="px-6 py-3 text-sm text-gray-500 text-center bg-gray-50/50">
+                   <div className="flex flex-col gap-1">
+                     <div className="flex gap-2 font-medium border-b border-gray-200 pb-1 text-gray-700 justify-center">
+                       {state.settings.platforms.map(p => <div key={p} className="flex-1 text-center" style={{ color: state.settings.platformColors?.[p] }}>{p.substring(0, 3)}</div>)}
+                     </div>
+                     <div className="flex gap-2 justify-center">
+                       {state.settings.platforms.map(p => <div key={p} className="flex-1 text-center text-gray-900">{yearDataToDate.platformStats[p]?.nights || 0}</div>)}
+                     </div>
+                     <div className="flex gap-2 justify-center">
+                       {state.settings.platforms.map(p => <div key={p} className="flex-1 text-center text-gray-900">{Math.round(yearDataToDate.platformStats[p]?.gross || 0)}</div>)}
+                     </div>
+                   </div>
                 </td>
               </tr>
               {/* Core Metrics */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">Revenu fiscal</td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50">{Math.round(yearData.fiscalGross)}</td>
+                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">Total Nuitées</td>
+                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center">{yearData.nights}</td>
+                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">{yearDataToDate.nights}</td>
               </tr>
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">Revenus brut</td>
+                <td className="px-6 py-3 text-sm font-medium text-gray-900">Revenu fiscal</td>
+                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center">{Math.round(yearData.fiscalGross)}</td>
+                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">{Math.round(yearDataToDate.fiscalGross)}</td>
+              </tr>
+              <tr>
+                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">Revenus brut</td>
                 <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center">{Math.round(yearData.gross)}</td>
+                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">{Math.round(yearDataToDate.gross)}</td>
               </tr>
               <tr>
                 <td className="px-6 py-3 text-sm font-medium text-gray-900">Revenus net</td>
                 <td className="px-6 py-3 text-sm font-bold text-green-700 text-center">{Math.round(yearData.net)}</td>
+                <td className="px-6 py-3 text-sm font-bold text-green-700 text-center bg-gray-50/50">{Math.round(yearDataToDate.net)}</td>
               </tr>
               {/* Monthly averages */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">Brut mensuel</td>
+                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">Brut mensuel</td>
                 <td className="px-6 py-3 text-sm text-gray-900 text-center">{Math.round(yearData.gross / 12)}</td>
+                <td className="px-6 py-3 text-sm text-gray-400 text-center bg-gray-50/50">-</td>
               </tr>
               <tr>
                 <td className="px-6 py-3 text-sm font-medium text-gray-900">Net mensuel</td>
                 <td className="px-6 py-3 text-sm text-gray-900 text-center">{Math.round(yearData.net / 12)}</td>
+                <td className="px-6 py-3 text-sm text-gray-400 text-center bg-gray-50/50">-</td>
               </tr>
               {/* Per night averages */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">Brut par nuit</td>
+                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">Brut par nuit</td>
                 <td className="px-6 py-3 text-sm text-gray-900 text-center">{yearData.nights > 0 ? Math.round(yearData.gross / yearData.nights) : 0}</td>
+                <td className="px-6 py-3 text-sm text-gray-900 text-center bg-gray-50/50">{yearDataToDate.nights > 0 ? Math.round(yearDataToDate.gross / yearDataToDate.nights) : 0}</td>
               </tr>
               <tr>
                 <td className="px-6 py-3 text-sm font-medium text-gray-900">Net par nuit</td>
                 <td className="px-6 py-3 text-sm text-gray-900 text-center">{yearData.nights > 0 ? Math.round(yearData.net / yearData.nights) : 0}</td>
+                <td className="px-6 py-3 text-sm text-gray-900 text-center bg-gray-50/50">{yearDataToDate.nights > 0 ? Math.round(yearDataToDate.net / yearDataToDate.nights) : 0}</td>
               </tr>
             </tbody>
           </table>

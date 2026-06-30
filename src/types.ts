@@ -38,6 +38,7 @@ export interface Settings {
   yearlyTaxes: Record<string, YearlyTaxRates>;
   platforms: Platform[];
   platformColors: Record<string, string>;
+  platformFees?: Record<string, { percentage: number; active: boolean }>;
   houseCosts: HouseCost[];
   // Deprecated flat settings for migration
   csgRate?: number;

@@ -4,12 +4,13 @@ import { DataEntry } from './components/DataEntry';
 import { Dashboard } from './components/Dashboard';
 import { SettingsView } from './components/Settings';
 import { DataManagement } from './components/DataManagement';
-import { Calculator, Settings, BarChart2, CalendarDays, LogOut, Database } from 'lucide-react';
+import { ValidationList } from './components/ValidationList';
+import { Calculator, Settings, BarChart2, CalendarDays, LogOut, Database, CheckSquare } from 'lucide-react';
 import { AuthWrapper } from './Auth';
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
 
-type Tab = 'saisie' | 'synthese' | 'parametres' | 'donnees';
+type Tab = 'saisie' | 'avalider' | 'synthese' | 'parametres' | 'donnees';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('saisie');
@@ -36,6 +37,17 @@ function AppContent() {
               >
                 <CalendarDays className="w-4 h-4 mr-1 sm:mr-2" />
                 <span>Saisie</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('avalider')}
+                className={`flex items-center px-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'avalider'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                }`}
+              >
+                <CheckSquare className="w-4 h-4 mr-1 sm:mr-2" />
+                <span>À valider</span>
               </button>
               <button
                 onClick={() => setActiveTab('synthese')}
@@ -89,6 +101,7 @@ function AppContent() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'saisie' && <DataEntry />}
+        {activeTab === 'avalider' && <ValidationList />}
         {activeTab === 'synthese' && <Dashboard />}
         {activeTab === 'parametres' && <SettingsView />}
         {activeTab === 'donnees' && <DataManagement />}

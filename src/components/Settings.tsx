@@ -11,7 +11,6 @@ import {
   ChevronUp,
   Calculator,
 } from "lucide-react";
-import { CsvImport } from "./CsvImport";
 
 const currentYear = new Date().getFullYear().toString();
 
@@ -556,11 +555,6 @@ export function SettingsView() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* CSV Import */}
-      <div className="mt-8">
-        <CsvImport />
       </div>
 
       {/* Explications des calculs */}

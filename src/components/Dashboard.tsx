@@ -187,9 +187,23 @@ export function Dashboard() {
       const monthPrefix = `${selectedYear}-${(index + 1).toString().padStart(2, '0')}`;
       const days = yearData.yearDays.filter(d => d.date.startsWith(monthPrefix));
       const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
-      return { name: monthName, gross };
+      const nights = days.length;
+      
+      const blackGross = days.filter(d => d.platform === 'Black' || d.platform.toLowerCase() === 'black' || state.settings.platformExcludeFiscal?.[d.platform]).reduce((acc, curr) => acc + curr.amount, 0);
+      const declaredGross = gross - blackGross;
+      
+      const yTaxes = state.settings.yearlyTaxes?.[selectedYear] || state.settings.yearlyTaxes?.[new Date().getFullYear().toString()] || {
+        csgRate: 18.6, taxRate: 11, abattementRate: 70, chargeParNuit: 5, chargeFonciere: 383
+      };
+      
+      const variableCharges = nights * yTaxes.chargeParNuit;
+      const fixedCharges = yTaxes.chargeFonciere / 12;
+      const estimatedTaxes = declaredGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
+      const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+
+      return { name: monthName, gross, net };
     });
-  }, [yearData.yearDays, selectedYear]);
+  }, [yearData.yearDays, selectedYear, state.settings]);
 
   const yearlyChartData = useMemo(() => {
     return years.map(y => {
@@ -671,19 +685,28 @@ export function Dashboard() {
         {/* Monthly Breakdown Table */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-fit">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900">Revenus mensuels (Brut)</h3>
+            <h3 className="text-lg font-medium text-gray-900">Revenus mensuels</h3>
           </div>
           <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Mois</th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Brut</th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Net</th>
+              </tr>
+            </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {monthlyData.map((m) => (
                 <tr key={m.name} className="hover:bg-gray-50">
-                  <td className="px-6 py-3 text-sm font-medium text-gray-900 w-1/2">{m.name}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-gray-900">{m.name}</td>
                   <td className="px-6 py-3 text-sm font-bold text-gray-700 text-right">{Math.round(m.gross)} €</td>
+                  <td className="px-6 py-3 text-sm font-bold text-gray-700 text-right">{Math.round(m.net)} €</td>
                 </tr>
               ))}
               <tr className="bg-gray-100">
-                <td className="px-6 py-4 text-sm font-bold text-gray-900">Total 12 mois</td>
+                <td className="px-6 py-4 text-sm font-bold text-gray-900">Total</td>
                 <td className="px-6 py-4 text-sm font-bold text-gray-900 text-right">{Math.round(yearData.gross)} €</td>
+                <td className="px-6 py-4 text-sm font-bold text-gray-900 text-right">{Math.round(yearData.net)} €</td>
               </tr>
             </tbody>
           </table>

@@ -41,6 +41,10 @@ export interface Settings {
   platformFees?: Record<string, { percentage: number; active: boolean }>;
   platformExcludeFiscal?: Record<string, boolean>;
   houseCosts: HouseCost[];
+  autoBackup?: boolean;
+  autoBackupInterval?: "weekly" | "monthly";
+  lastBackupDate?: string;
+  backupHistory?: string[];
   // Deprecated flat settings for migration
   csgRate?: number;
   taxRate?: number;

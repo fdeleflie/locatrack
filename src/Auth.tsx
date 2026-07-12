@@ -19,9 +19,9 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Erreur lors de la connexion');
+      alert(`Erreur lors de la connexion : ${e.message || e.code || "Erreur inconnue"}`);
     }
   };
 

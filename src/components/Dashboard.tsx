@@ -171,7 +171,25 @@ export function Dashboard() {
       daysInYear = 366;
     }
 
-    const occupancyRate = (nights / Math.max(1, daysInYear)) * 100;
+    const currentYearNum = new Date().getFullYear();
+    let occupancyRate = 0;
+    
+    if (yearNum >= currentYearNum) {
+      const startOfYear = new Date(yearNum, 0, 1);
+      const todayDate = new Date();
+      const diffTime = Math.max(0, todayDate.getTime() - startOfYear.getTime());
+      let daysElapsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (daysElapsed === 0) daysElapsed = 1;
+      
+      const todayStr = todayDate.toISOString().split("T")[0];
+      const nightsToDate = distributedDays.filter(
+        (d) => d.date.startsWith(selectedYear) && d.date <= todayStr
+      ).length;
+      
+      occupancyRate = (nightsToDate / daysElapsed) * 100;
+    } else {
+      occupancyRate = (nights / Math.max(1, daysInYear)) * 100;
+    }
 
     return {
       nights,
@@ -374,7 +392,25 @@ export function Dashboard() {
         if ((yearNum % 4 === 0 && yearNum % 100 !== 0) || yearNum % 400 === 0) {
           daysInYear = 366;
         }
-        const occupancyRate = (nights / Math.max(1, daysInYear)) * 100;
+        
+        let occupancyRate = 0;
+        const currentYearNum = new Date().getFullYear();
+        if (yearNum >= currentYearNum) {
+          const startOfYear = new Date(yearNum, 0, 1);
+          const todayDate = new Date();
+          const diffTime = Math.max(0, todayDate.getTime() - startOfYear.getTime());
+          let daysElapsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (daysElapsed === 0) daysElapsed = 1;
+          
+          const todayStr = todayDate.toISOString().split("T")[0];
+          const nightsToDate = distributedDays.filter(
+            (d) => d.date.startsWith(y) && d.date <= todayStr
+          ).length;
+          
+          occupancyRate = (nightsToDate / daysElapsed) * 100;
+        } else {
+          occupancyRate = (nights / Math.max(1, daysInYear)) * 100;
+        }
 
         return {
           year: y,
@@ -390,7 +426,7 @@ export function Dashboard() {
   const monthlyComparisonData = useMemo(() => {
     return months.map((monthName, index) => {
       const monthStr = (index + 1).toString().padStart(2, "0");
-      const dataPoint: any = { name: monthName.substring(0, 3) };
+      const dataPoint: any = { name: monthName === "Juin" ? "Juin" : monthName === "Juillet" ? "Juil" : monthName.substring(0, 3) };
 
       years.forEach((y) => {
         const monthPrefix = `${y}-${monthStr}`;
@@ -622,7 +658,7 @@ export function Dashboard() {
           </p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 lg:col-span-1">
-          <p className="text-sm font-medium text-gray-500">Taux d'occupation</p>
+          <p className="text-sm font-medium text-gray-500">Taux d'occupation {isPastYear ? '' : '(à date)'}</p>
           <p className="mt-2 text-2xl font-bold text-blue-600">
             {yearData.occupancyRate.toFixed(2)} %
           </p>
@@ -1057,7 +1093,7 @@ export function Dashboard() {
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <h3 className="text-lg font-medium text-gray-900 mb-4">
-            Taux d'occupation par Année <span className="text-sm font-normal text-gray-500 ml-2">(Réalisé & Projections)</span>
+            Taux d'occupation par Année <span className="text-sm font-normal text-gray-500 ml-2">(à date pour l'année en cours)</span>
           </h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -1345,7 +1381,7 @@ export function Dashboard() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden h-fit">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <h3 className="text-lg font-medium text-gray-900">
-              Revenus mensuels
+              Revenus mensuels ({selectedYear}) <span className="text-sm font-normal text-gray-500 ml-2">{yearStatusLabel}</span>
             </h3>
           </div>
           <table className="min-w-full divide-y divide-gray-200">

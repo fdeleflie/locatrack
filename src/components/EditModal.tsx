@@ -10,7 +10,7 @@ export function EditModal({
   transaction: Transaction;
   onClose: () => void;
 }) {
-  const { state, updateTransaction, removeTransaction, addTransaction } =
+  const { state, updateTransaction, removeTransaction, addTransaction, batchUpdateTransactions } =
     useStore();
 
   const [date, setDate] = useState(transaction.date);
@@ -67,68 +67,60 @@ export function EditModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const adds: any[] = [];
+    const updates: any[] = [];
+    const removes: string[] = [];
+
     Object.entries(platformData).forEach(([plat, data]: [string, any]) => {
       if (data.checked && data.amount) {
+        const fields = {
+          date,
+          amount: parseFloat(data.amount),
+          clientAmount: data.clientAmount
+            ? parseFloat(data.clientAmount)
+            : undefined,
+          commission: data.commission
+            ? parseFloat(data.commission)
+            : undefined,
+          bankFee: data.bankFee ? parseFloat(data.bankFee) : undefined,
+          platform: plat,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          phone: phone || undefined,
+          nights,
+          adults: typeof adults === "number" ? adults : undefined,
+          children: typeof children === "number" ? children : undefined,
+          comments: comments || undefined,
+          isValidated,
+          rating: isValidated ? rating : undefined,
+          validationComment:
+            isValidated && validationComment ? validationComment : undefined,
+        };
+
         if (data.id) {
-          updateTransaction(data.id, {
-            date,
-            amount: parseFloat(data.amount),
-            clientAmount: data.clientAmount
-              ? parseFloat(data.clientAmount)
-              : undefined,
-            commission: data.commission
-              ? parseFloat(data.commission)
-              : undefined,
-            bankFee: data.bankFee ? parseFloat(data.bankFee) : undefined,
-            platform: plat,
-            firstName: firstName || undefined,
-            lastName: lastName || undefined,
-            phone: phone || undefined,
-            nights,
-            adults: typeof adults === "number" ? adults : undefined,
-            children: typeof children === "number" ? children : undefined,
-            comments: comments || undefined,
-            isValidated,
-            rating: isValidated ? rating : undefined,
-            validationComment:
-              isValidated && validationComment ? validationComment : undefined,
-          });
+          updates.push({ id: data.id, updates: fields });
         } else {
-          addTransaction({
-            date,
-            amount: parseFloat(data.amount),
-            clientAmount: data.clientAmount
-              ? parseFloat(data.clientAmount)
-              : undefined,
-            commission: data.commission
-              ? parseFloat(data.commission)
-              : undefined,
-            bankFee: data.bankFee ? parseFloat(data.bankFee) : undefined,
-            platform: plat,
-            firstName: firstName || undefined,
-            lastName: lastName || undefined,
-            phone: phone || undefined,
-            nights,
-            adults: typeof adults === "number" ? adults : undefined,
-            children: typeof children === "number" ? children : undefined,
-            comments: comments || undefined,
-            isValidated,
-            rating: isValidated ? rating : undefined,
-            validationComment:
-              isValidated && validationComment ? validationComment : undefined,
-          });
+          adds.push(fields);
         }
       } else if (data.id && !data.checked) {
-        removeTransaction(data.id);
+        removes.push(data.id);
       }
     });
+
+    if (adds.length > 0 || updates.length > 0 || removes.length > 0) {
+      batchUpdateTransactions(adds, updates, removes);
+    }
     onClose();
   };
 
   const handleDeleteAll = () => {
+    const removes: string[] = [];
     Object.values(platformData).forEach((data: any) => {
-      if (data.id) removeTransaction(data.id);
+      if (data.id) removes.push(data.id);
     });
+    if (removes.length > 0) {
+      batchUpdateTransactions([], [], removes);
+    }
     onClose();
   };
 

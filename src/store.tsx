@@ -37,6 +37,11 @@ interface StoreContextType {
   addTransaction: (t: Omit<Transaction, 'id'>) => void;
   updateTransaction: (id: string, t: Partial<Transaction>) => void;
   removeTransaction: (id: string) => void;
+  batchUpdateTransactions: (
+    adds: Omit<Transaction, 'id'>[],
+    updates: { id: string; updates: Partial<Transaction> }[],
+    removes: string[]
+  ) => void;
   updateSettings: (s: Partial<Settings>) => void;
   addHouseCost: (c: Omit<HouseCost, 'id'>) => void;
   removeHouseCost: (id: string) => void;
@@ -142,6 +147,44 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ...state,
       transactions: state.transactions.map((t) => t.id === id ? { ...t, ...updates } : t),
     });
+  };
+
+  const batchUpdateTransactions = (
+    adds: Omit<Transaction, 'id'>[],
+    updates: { id: string; updates: Partial<Transaction> }[],
+    removes: string[]
+  ) => {
+    if (!state) return;
+    
+    let currentTxs = [...state.transactions];
+    
+    if (removes.length > 0) {
+      const removeSet = new Set(removes);
+      currentTxs = currentTxs.filter((t) => !removeSet.has(t.id));
+    }
+    
+    if (updates.length > 0) {
+      const updateMap = new Map<string, Partial<Transaction>>();
+      updates.forEach((u) => updateMap.set(u.id, u.updates));
+      currentTxs = currentTxs.map((t) => {
+        if (updateMap.has(t.id)) {
+          return { ...t, ...updateMap.get(t.id) };
+        }
+        return t;
+      });
+    }
+    
+    if (adds.length > 0) {
+      const newTxs = adds.map((t) => ({
+        ...t,
+        id: Math.random().toString(36).substring(2, 9),
+      }));
+      currentTxs = [...currentTxs, ...newTxs];
+    }
+    
+    currentTxs.sort((a, b) => a.date.localeCompare(b.date));
+    
+    saveState({ ...state, transactions: currentTxs });
   };
 
   const importTransactions = (newTxs: Transaction[]) => {
@@ -312,6 +355,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         addTransaction,
         updateTransaction,
         removeTransaction,
+        batchUpdateTransactions,
         updateSettings,
         addHouseCost,
         removeHouseCost,

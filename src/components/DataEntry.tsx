@@ -33,7 +33,7 @@ const formatUTCDate = (date: Date) => {
 };
 
 export function DataEntry() {
-  const { state, addTransaction, removeTransaction, updateTransaction } =
+  const { state, addTransaction, removeTransaction, updateTransaction, batchUpdateTransactions } =
     useStore();
 
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -233,10 +233,10 @@ export function DataEntry() {
     e.preventDefault();
     if (!date) return;
 
-    let added = false;
+    const txsToAdd: any[] = [];
     Object.entries(platformData).forEach(([plat, data]: [string, any]) => {
       if (data.checked && data.amount) {
-        addTransaction({
+        txsToAdd.push({
           date,
           amount: parseFloat(data.amount),
           clientAmount: data.clientAmount
@@ -253,11 +253,12 @@ export function DataEntry() {
           children: typeof children === "number" ? children : undefined,
           comments: comments || undefined,
         });
-        added = true;
       }
     });
 
-    if (added) {
+    if (txsToAdd.length > 0) {
+      batchUpdateTransactions(txsToAdd, [], []);
+
       setPlatformData((prev) => {
         const next: Record<
           string,

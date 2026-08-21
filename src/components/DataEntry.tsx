@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useStore } from "../store";
 import {
   Plus,
@@ -14,10 +14,12 @@ import {
   Star,
   Filter,
   SlidersHorizontal,
+  CalendarDays,
 } from "lucide-react";
 import { Transaction } from "../types";
 import { EditModal } from "./EditModal";
 import { ValidationModal } from "./ValidationModal";
+import { CalendarComparisonModal } from "./CalendarComparisonModal";
 
 // Robust UTC date helpers to avoid local timezone shifts
 const parseUTCDate = (dateStr: string) => {
@@ -65,6 +67,7 @@ export function DataEntry() {
 
   // Client Search States
   const [showSearch, setShowSearch] = useState(false);
+  const [showComparisonModal, setShowComparisonModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchPlatform, setSearchPlatform] = useState("all");
   const [searchStatus, setSearchStatus] = useState("all");
@@ -153,6 +156,16 @@ export function DataEntry() {
     d.setDate(1);
     return d;
   });
+
+  useEffect(() => {
+    setCurrentMonth((prev) => {
+      const newYear = parseInt(selectedYear);
+      if (prev.getFullYear() !== newYear) {
+        return new Date(newYear, prev.getMonth(), 1);
+      }
+      return prev;
+    });
+  }, [selectedYear]);
 
   const nextMonth = () => {
     setCurrentMonth(
@@ -320,20 +333,37 @@ export function DataEntry() {
             {showSearch ? "Fermer la recherche" : "Rechercher un client"}
           </button>
           {!showSearch && (
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm font-medium bg-white"
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  Année {y}
-                </option>
-              ))}
-            </select>
+            <>
+              <button
+                onClick={() => setShowComparisonModal(true)}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium shadow-sm bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                title="Comparer les années"
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span className="hidden sm:inline">Comparateur</span>
+              </button>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm font-medium bg-white"
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    Année {y}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
         </div>
       </div>
+
+      {showComparisonModal && (
+        <CalendarComparisonModal
+          onClose={() => setShowComparisonModal(false)}
+          initialMonthIndex={currentMonth.getMonth()}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Form Column */}

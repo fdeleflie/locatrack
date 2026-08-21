@@ -316,43 +316,145 @@ export function Dashboard() {
     "Novembre",
     "Décembre",
   ];
+
+  const projectionMetrics = useMemo(() => {
+    const today = new Date();
+    const currentYearStr = today.getFullYear().toString();
+    const todayStr = today.toISOString().split("T")[0];
+    const mmdd = todayStr.substring(5, 10);
+    
+    const historicalYears = years.filter((y) => y < currentYearStr);
+    
+    let ytdWeight = 0;
+    const weights = new Array(12).fill(1 / 12);
+    
+    if (historicalYears.length > 0) {
+      let totalHistGross = 0;
+      let totalHistYtdGross = 0;
+      const monthTotals = new Array(12).fill(0);
+      
+      historicalYears.forEach((y) => {
+        const yDays = distributedDays.filter((d) => d.date.startsWith(y));
+        yDays.forEach((d) => {
+          totalHistGross += d.amount;
+          const m = parseInt(d.date.substring(5, 7)) - 1;
+          monthTotals[m] += d.amount;
+          if (d.date.substring(5, 10) <= mmdd) {
+            totalHistYtdGross += d.amount;
+          }
+        });
+      });
+      
+      if (totalHistGross > 0) {
+        ytdWeight = totalHistYtdGross / totalHistGross;
+        for (let i = 0; i < 12; i++) {
+          weights[i] = monthTotals[i] / totalHistGross;
+        }
+      }
+    } else {
+      const startOfYear = new Date(today.getFullYear(), 0, 1);
+      const daysElapsed = Math.max(1, Math.ceil((today.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)));
+      const daysInYear = ((today.getFullYear() % 4 === 0 && today.getFullYear() % 100 !== 0) || today.getFullYear() % 400 === 0) ? 366 : 365;
+      ytdWeight = daysElapsed / daysInYear;
+    }
+    
+    const safeWeight = Math.max(0.01, ytdWeight);
+    const multiplier = 1 / safeWeight;
+
+    const currentYearDaysToDate = distributedDays.filter(
+      (d) => d.date.startsWith(currentYearStr) && d.date.substring(5, 10) <= mmdd
+    );
+    const currentYtdGross = currentYearDaysToDate.reduce((a, b) => a + b.amount, 0);
+    const currentYtdNights = currentYearDaysToDate.length;
+    
+    return {
+      ytdWeight: safeWeight,
+      monthWeights: weights,
+      multiplier,
+      estimatedTotalGross: currentYtdGross * multiplier,
+      estimatedTotalNights: Math.round(currentYtdNights * multiplier),
+    };
+  }, [years, distributedDays]);
+
+  const projectedYearData = useMemo(() => {
+    const multiplier = projectionMetrics.multiplier;
+    const projectedPlatformStats: Record<string, { nights: number; gross: number }> = {};
+    
+    Object.keys(yearDataToDate.platformStats).forEach(p => {
+       projectedPlatformStats[p] = {
+          nights: Math.round(yearDataToDate.platformStats[p].nights * multiplier),
+          gross: yearDataToDate.platformStats[p].gross * multiplier
+       };
+    });
+
+    return {
+      nights: Math.round(yearDataToDate.nights * multiplier),
+      gross: yearDataToDate.gross * multiplier,
+      fiscalGross: yearDataToDate.fiscalGross * multiplier,
+      net: yearDataToDate.net * multiplier,
+      platformStats: projectedPlatformStats,
+      occupancyRate: Math.min(100, yearDataToDate.occupancyRate), // keep it as is, it's an average
+    };
+  }, [yearDataToDate, projectionMetrics]);
   const monthlyData = useMemo(() => {
+    const today = new Date();
+    const currentYearStr = today.getFullYear().toString();
+    const currentMonthIndex = today.getMonth();
+
     return months.map((monthName, index) => {
       const monthPrefix = `${selectedYear}-${(index + 1).toString().padStart(2, "0")}`;
-      const days = yearData.yearDays.filter((d) =>
-        d.date.startsWith(monthPrefix),
-      );
-      const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
-      const nights = days.length;
-
-      const blackGross = days
-        .filter(
-          (d) =>
-            d.platform === "Black" ||
-            d.platform.toLowerCase() === "black" ||
-            state.settings.platformExcludeFiscal?.[d.platform],
-        )
-        .reduce((acc, curr) => acc + curr.amount, 0);
-      const declaredGross = gross - blackGross;
-
+      
       const yTaxes = state.settings.yearlyTaxes?.[selectedYear] ||
-        state.settings.yearlyTaxes?.[new Date().getFullYear().toString()] || {
+        state.settings.yearlyTaxes?.[currentYearStr] || {
           csgRate: 18.6,
           taxRate: 11,
           abattementRate: 70,
           chargeParNuit: 5,
           chargeFonciere: 383,
         };
+        
+      if (selectedYear === currentYearStr && index > currentMonthIndex) {
+         // Projeté
+         const projGross = projectionMetrics.estimatedTotalGross * projectionMetrics.monthWeights[index];
+         const projNights = Math.round(projectionMetrics.estimatedTotalNights * projectionMetrics.monthWeights[index]);
+         
+         const variableCharges = projNights * yTaxes.chargeParNuit;
+         const fixedCharges = yTaxes.chargeFonciere / 12;
+         const estimatedTaxes = projGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
+         const net = projGross - estimatedTaxes - variableCharges - fixedCharges;
+         
+         return { name: monthName, gross: projGross, net: net, status: 'projeté' };
+      } else {
+         const days = yearData.yearDays.filter((d) =>
+           d.date.startsWith(monthPrefix),
+         );
+         const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
+         const nights = days.length;
 
-      const variableCharges = nights * yTaxes.chargeParNuit;
-      const fixedCharges = yTaxes.chargeFonciere / 12;
-      const estimatedTaxes =
-        declaredGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
-      const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+         const blackGross = days
+           .filter(
+             (d) =>
+               d.platform === "Black" ||
+               d.platform.toLowerCase() === "black" ||
+               state.settings.platformExcludeFiscal?.[d.platform],
+           )
+           .reduce((acc, curr) => acc + curr.amount, 0);
+         const declaredGross = gross - blackGross;
 
-      return { name: monthName, gross, net };
+         const variableCharges = nights * yTaxes.chargeParNuit;
+         const fixedCharges = yTaxes.chargeFonciere / 12;
+         const estimatedTaxes = declaredGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
+         const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+
+         let status = 'réalisé';
+         if (selectedYear === currentYearStr && index === currentMonthIndex) {
+             status = 'à date';
+         }
+
+         return { name: monthName, gross, net, status };
+      }
     });
-  }, [yearData.yearDays, selectedYear, state.settings]);
+  }, [yearData.yearDays, selectedYear, state.settings, projectionMetrics]);
 
   const yearlyChartData = useMemo(() => {
     return years
@@ -424,30 +526,17 @@ export function Dashboard() {
   }, [years, distributedDays, state.settings]);
 
   const monthlyComparisonData = useMemo(() => {
+    const today = new Date();
+    const currentYear = today.getFullYear().toString();
+    const currentMonthIndex = today.getMonth();
+
     return months.map((monthName, index) => {
       const monthStr = (index + 1).toString().padStart(2, "0");
       const dataPoint: any = { name: monthName === "Juin" ? "Juin" : monthName === "Juillet" ? "Juil" : monthName.substring(0, 3) };
 
       years.forEach((y) => {
-        const monthPrefix = `${y}-${monthStr}`;
-        const days = distributedDays.filter((d) =>
-          d.date.startsWith(monthPrefix),
-        );
-        const nights = days.length;
-        const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
-
-        const blackGross = days
-          .filter(
-            (d) =>
-              d.platform === "Black" ||
-              d.platform.toLowerCase() === "black" ||
-              state.settings.platformExcludeFiscal?.[d.platform],
-          )
-          .reduce((acc, curr) => acc + curr.amount, 0);
-        const declaredGross = gross - blackGross;
-
         const yTaxes = state.settings.yearlyTaxes?.[y] ||
-          state.settings.yearlyTaxes?.[new Date().getFullYear().toString()] || {
+          state.settings.yearlyTaxes?.[currentYear] || {
             csgRate: 18.6,
             taxRate: 11,
             abattementRate: 70,
@@ -455,20 +544,47 @@ export function Dashboard() {
             chargeFonciere: 383,
           };
 
-        const variableCharges = nights * yTaxes.chargeParNuit;
-        const fixedCharges = yTaxes.chargeFonciere / 12;
-        const estimatedTaxes =
-          declaredGross *
-          (yTaxes.abattementRate / 100) *
-          (yTaxes.csgRate / 100);
-        const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+        if (y === currentYear && index > currentMonthIndex) {
+           const projGross = projectionMetrics.estimatedTotalGross * projectionMetrics.monthWeights[index];
+           const projNights = Math.round(projectionMetrics.estimatedTotalNights * projectionMetrics.monthWeights[index]);
+           
+           const variableCharges = projNights * yTaxes.chargeParNuit;
+           const fixedCharges = yTaxes.chargeFonciere / 12;
+           const estimatedTaxes = projGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
+           const net = projGross - estimatedTaxes - variableCharges - fixedCharges;
+           
+           dataPoint[`${y}_projected`] = Math.round(net);
+        } else {
+           const monthPrefix = `${y}-${monthStr}`;
+           const days = distributedDays.filter((d) => d.date.startsWith(monthPrefix));
+           const nights = days.length;
+           const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
 
-        dataPoint[y] = Math.round(net);
+           const blackGross = days
+             .filter(
+               (d) =>
+                 d.platform === "Black" ||
+                 d.platform.toLowerCase() === "black" ||
+                 state.settings.platformExcludeFiscal?.[d.platform],
+             )
+             .reduce((acc, curr) => acc + curr.amount, 0);
+           const declaredGross = gross - blackGross;
+
+           const variableCharges = nights * yTaxes.chargeParNuit;
+           const fixedCharges = yTaxes.chargeFonciere / 12;
+           const estimatedTaxes = declaredGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
+           const net = gross - estimatedTaxes - variableCharges - fixedCharges;
+
+           dataPoint[y] = Math.round(net);
+           
+           if (y === currentYear && index === currentMonthIndex) {
+              dataPoint[`${y}_projected`] = Math.round(net);
+           }
+        }
       });
-
       return dataPoint;
     });
-  }, [months, years, distributedDays, state.settings]);
+  }, [months, years, distributedDays, state.settings, projectionMetrics]);
 
   const totalNetAllYears = useMemo(() => {
     return yearlyChartData.reduce((acc, curr) => acc + curr.net, 0);
@@ -1072,19 +1188,38 @@ export function Dashboard() {
                   tickFormatter={(value) => `${Math.round(Number(value))}€`}
                 />
                 <RechartsTooltip
-                  formatter={(value, name) => [`${Math.round(Number(value))} €`, `Année ${name}`]}
+                  formatter={(value, name) => {
+                    const nameStr = String(name);
+                    if (nameStr.endsWith('_projected')) {
+                      return [`${Math.round(Number(value))} €`, `Année ${nameStr.replace('_projected', ' (Projeté)')}`];
+                    }
+                    return [`${Math.round(Number(value))} €`, `Année ${nameStr}`];
+                  }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: "12px" }} />
                 {years.map((y, i) => (
-                  <Line
-                    key={y}
-                    type="monotone"
-                    dataKey={y}
-                    stroke={chartColors[i % chartColors.length]}
-                    strokeWidth={y === selectedYear ? 3 : 1.5}
-                    dot={{ r: y === selectedYear ? 4 : 2 }}
-                    activeDot={{ r: 6 }}
-                  />
+                  <React.Fragment key={y}>
+                    <Line
+                      type="monotone"
+                      dataKey={y}
+                      stroke={chartColors[i % chartColors.length]}
+                      strokeWidth={y === selectedYear ? 3 : 1.5}
+                      dot={{ r: y === selectedYear ? 4 : 2 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    {y === currentYearStr && (
+                      <Line
+                        type="monotone"
+                        dataKey={`${y}_projected`}
+                        stroke={chartColors[i % chartColors.length]}
+                        strokeWidth={y === selectedYear ? 3 : 1.5}
+                        strokeDasharray="5 5"
+                        dot={{ r: y === selectedYear ? 4 : 2 }}
+                        activeDot={{ r: 6 }}
+                        legendType="none"
+                      />
+                    )}
+                  </React.Fragment>
                 ))}
               </LineChart>
             </ResponsiveContainer>
@@ -1167,43 +1302,53 @@ export function Dashboard() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 w-1/3">
+                <th className={`px-4 py-3 text-left text-sm font-semibold text-gray-900 ${selectedYear === currentYearStr ? 'w-1/4' : 'w-1/3'}`}>
                   Indicateur
                 </th>
-                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900 w-1/3">
-                  Projeté
+                <th className={`px-4 py-3 text-center text-sm font-semibold text-gray-900 ${selectedYear === currentYearStr ? 'w-1/4' : 'w-1/3'}`}>
+                  Saisies (Total)
                 </th>
-                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900 w-1/3">
+                <th className={`px-4 py-3 text-center text-sm font-semibold text-gray-900 ${selectedYear === currentYearStr ? 'w-1/4' : 'w-1/3'}`}>
                   À date
                 </th>
+                {selectedYear === currentYearStr && (
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-blue-700 w-1/4">
+                    Projection Stat.
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 bg-gray-50">
                   Taux d'occupation
                 </td>
-                <td className="px-6 py-3 text-sm text-center text-gray-900">
+                <td className="px-4 py-3 text-sm text-center text-gray-900">
                   {yearData.occupancyRate.toFixed(1)} %
                 </td>
-                <td className="px-6 py-3 text-sm text-center text-gray-900 bg-gray-50/50">
+                <td className="px-4 py-3 text-sm text-center text-gray-900 bg-gray-50/50">
                   {yearDataToDate.occupancyRate.toFixed(1)} %
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm font-bold text-center text-blue-700 bg-blue-50/50">
+                    {projectedYearData.occupancyRate.toFixed(1)} %
+                  </td>
+                )}
               </tr>
               {/* Platform breakdown */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   <div className="flex flex-col gap-1">
                     <span className="font-semibold mb-1 border-b border-gray-200 pb-1">
                       Plateformes
                     </span>
-                    <span className="text-gray-500">Nb nuits</span>
-                    <span className="text-gray-500">Revenus brut</span>
+                    <span className="text-gray-500 text-xs">Nb nuits</span>
+                    <span className="text-gray-500 text-xs">Revenus brut</span>
                   </div>
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-500 text-center">
+                <td className="px-2 py-3 text-xs text-gray-500 text-center">
                   <div className="flex flex-col gap-1">
-                    <div className="flex gap-2 font-medium border-b border-gray-200 pb-1 text-gray-700 justify-center">
+                    <div className="flex gap-1 font-medium border-b border-gray-200 pb-1 text-gray-700 justify-center">
                       {state.settings.platforms.map((p) => (
                         <div
                           key={p}
@@ -1214,31 +1359,25 @@ export function Dashboard() {
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-2 justify-center">
+                    <div className="flex gap-1 justify-center">
                       {state.settings.platforms.map((p) => (
-                        <div
-                          key={p}
-                          className="flex-1 text-center text-gray-900"
-                        >
+                        <div key={p} className="flex-1 text-center text-gray-900">
                           {yearData.platformStats[p]?.nights || 0}
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-2 justify-center">
+                    <div className="flex gap-1 justify-center">
                       {state.settings.platforms.map((p) => (
-                        <div
-                          key={p}
-                          className="flex-1 text-center text-gray-900"
-                        >
+                        <div key={p} className="flex-1 text-center text-gray-900">
                           {Math.round(yearData.platformStats[p]?.gross || 0)}
                         </div>
                       ))}
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-500 text-center bg-gray-50/50">
+                <td className="px-2 py-3 text-xs text-gray-500 text-center bg-gray-50/50">
                   <div className="flex flex-col gap-1">
-                    <div className="flex gap-2 font-medium border-b border-gray-200 pb-1 text-gray-700 justify-center">
+                    <div className="flex gap-1 font-medium border-b border-gray-200 pb-1 text-gray-700 justify-center">
                       {state.settings.platforms.map((p) => (
                         <div
                           key={p}
@@ -1249,22 +1388,16 @@ export function Dashboard() {
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-2 justify-center">
+                    <div className="flex gap-1 justify-center">
                       {state.settings.platforms.map((p) => (
-                        <div
-                          key={p}
-                          className="flex-1 text-center text-gray-900"
-                        >
+                        <div key={p} className="flex-1 text-center text-gray-900">
                           {yearDataToDate.platformStats[p]?.nights || 0}
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-2 justify-center">
+                    <div className="flex gap-1 justify-center">
                       {state.settings.platforms.map((p) => (
-                        <div
-                          key={p}
-                          className="flex-1 text-center text-gray-900"
-                        >
+                        <div key={p} className="flex-1 text-center text-gray-900">
                           {Math.round(
                             yearDataToDate.platformStats[p]?.gross || 0,
                           )}
@@ -1273,105 +1406,180 @@ export function Dashboard() {
                     </div>
                   </div>
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-2 py-3 text-xs text-blue-700 text-center bg-blue-50/50">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-1 font-medium border-b border-blue-200 pb-1 justify-center">
+                        {state.settings.platforms.map((p) => (
+                          <div
+                            key={p}
+                            className="flex-1 text-center"
+                            style={{ color: state.settings.platformColors?.[p] }}
+                          >
+                            {p.substring(0, 3)}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-1 justify-center font-bold">
+                        {state.settings.platforms.map((p) => (
+                          <div key={p} className="flex-1 text-center">
+                            {projectedYearData.platformStats[p]?.nights || 0}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-1 justify-center font-bold">
+                        {state.settings.platforms.map((p) => (
+                          <div key={p} className="flex-1 text-center">
+                            {Math.round(projectedYearData.platformStats[p]?.gross || 0)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </td>
+                )}
               </tr>
               {/* Core Metrics */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 bg-gray-50">
                   Total Nuitées
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center">
                   {yearData.nights}
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">
                   {yearDataToDate.nights}
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm font-bold text-blue-700 text-center bg-blue-50/50">
+                    {projectedYearData.nights}
+                  </td>
+                )}
               </tr>
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   Revenu fiscal
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center">
                   {Math.round(yearData.fiscalGross)}
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">
                   {Math.round(yearDataToDate.fiscalGross)}
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm font-bold text-blue-700 text-center bg-blue-50/50">
+                    {Math.round(projectedYearData.fiscalGross)}
+                  </td>
+                )}
               </tr>
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 bg-gray-50">
                   Revenus brut
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center">
                   {Math.round(yearData.gross)}
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm font-bold text-gray-900 text-center bg-gray-50/50">
                   {Math.round(yearDataToDate.gross)}
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm font-bold text-blue-700 text-center bg-blue-50/50">
+                    {Math.round(projectedYearData.gross)}
+                  </td>
+                )}
               </tr>
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   Revenus net
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-green-700 text-center">
+                <td className="px-4 py-3 text-sm font-bold text-green-700 text-center">
                   {Math.round(yearData.net)}
                 </td>
-                <td className="px-6 py-3 text-sm font-bold text-green-700 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm font-bold text-green-700 text-center bg-gray-50/50">
                   {Math.round(yearDataToDate.net)}
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm font-bold text-blue-700 text-center bg-blue-50/50">
+                    {Math.round(projectedYearData.net)}
+                  </td>
+                )}
               </tr>
               {/* Monthly averages */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 bg-gray-50">
                   Brut mensuel
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm text-gray-900 text-center">
                   {Math.round(yearData.gross / 12)}
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-400 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm text-gray-400 text-center bg-gray-50/50">
                   -
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm text-blue-700 font-medium text-center bg-blue-50/50">
+                    {Math.round(projectedYearData.gross / 12)}
+                  </td>
+                )}
               </tr>
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   Net mensuel
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm text-gray-900 text-center">
                   {Math.round(yearData.net / 12)}
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-400 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm text-gray-400 text-center bg-gray-50/50">
                   -
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm text-blue-700 font-medium text-center bg-blue-50/50">
+                    {Math.round(projectedYearData.net / 12)}
+                  </td>
+                )}
               </tr>
               {/* Per night averages */}
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900 bg-gray-50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 bg-gray-50">
                   Brut par nuit
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm text-gray-900 text-center">
                   {yearData.nights > 0
                     ? Math.round(yearData.gross / yearData.nights)
                     : 0}
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-900 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm text-gray-900 text-center bg-gray-50/50">
                   {yearDataToDate.nights > 0
                     ? Math.round(yearDataToDate.gross / yearDataToDate.nights)
                     : 0}
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm text-blue-700 font-medium text-center bg-blue-50/50">
+                    {projectedYearData.nights > 0
+                      ? Math.round(projectedYearData.gross / projectedYearData.nights)
+                      : 0}
+                  </td>
+                )}
               </tr>
               <tr>
-                <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   Net par nuit
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-900 text-center">
+                <td className="px-4 py-3 text-sm text-gray-900 text-center">
                   {yearData.nights > 0
                     ? Math.round(yearData.net / yearData.nights)
                     : 0}
                 </td>
-                <td className="px-6 py-3 text-sm text-gray-900 text-center bg-gray-50/50">
+                <td className="px-4 py-3 text-sm text-gray-900 text-center bg-gray-50/50">
                   {yearDataToDate.nights > 0
                     ? Math.round(yearDataToDate.net / yearDataToDate.nights)
                     : 0}
                 </td>
+                {selectedYear === currentYearStr && (
+                  <td className="px-4 py-3 text-sm text-blue-700 font-medium text-center bg-blue-50/50">
+                    {projectedYearData.nights > 0
+                      ? Math.round(projectedYearData.net / projectedYearData.nights)
+                      : 0}
+                  </td>
+                )}
               </tr>
             </tbody>
           </table>
@@ -1410,8 +1618,18 @@ export function Dashboard() {
             <tbody className="bg-white divide-y divide-gray-200">
               {monthlyData.map((m) => (
                 <tr key={m.name} className="hover:bg-gray-50">
-                  <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                  <td className="px-6 py-3 text-sm font-medium text-gray-900 flex items-center">
                     {m.name}
+                    {m.status === 'projeté' && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        Projeté
+                      </span>
+                    )}
+                    {m.status === 'à date' && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        À date
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-3 text-sm font-bold text-gray-700 text-right">
                     {Math.round(m.gross)} €
@@ -1421,9 +1639,9 @@ export function Dashboard() {
                   </td>
                 </tr>
               ))}
-              <tr className="bg-gray-100">
+              <tr className="bg-gray-100 border-t-2 border-gray-200">
                 <td className="px-6 py-4 text-sm font-bold text-gray-900">
-                  Total
+                  {selectedYear === currentYearStr ? 'Total (Saisies)' : 'Total'}
                 </td>
                 <td className="px-6 py-4 text-sm font-bold text-gray-900 text-right">
                   {Math.round(yearData.gross)} €
@@ -1432,6 +1650,19 @@ export function Dashboard() {
                   {Math.round(yearData.net)} €
                 </td>
               </tr>
+              {selectedYear === currentYearStr && (
+                <tr className="bg-blue-50">
+                  <td className="px-6 py-4 text-sm font-bold text-blue-800">
+                    Total (Projeté)
+                  </td>
+                  <td className="px-6 py-4 text-sm font-bold text-blue-800 text-right">
+                    {Math.round(projectedYearData.gross)} €
+                  </td>
+                  <td className="px-6 py-4 text-sm font-bold text-blue-800 text-right">
+                    {Math.round(projectedYearData.net)} €
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

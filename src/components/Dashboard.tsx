@@ -365,6 +365,7 @@ export function Dashboard() {
       (d) => d.date.startsWith(currentYearStr) && d.date.substring(5, 10) <= mmdd
     );
     const currentYtdGross = currentYearDaysToDate.reduce((a, b) => a + b.amount, 0);
+    const currentYtdFiscal = currentYearDaysToDate.reduce((a, b) => a + b.fiscalAmount, 0);
     const currentYtdNights = currentYearDaysToDate.length;
     
     return {
@@ -372,6 +373,7 @@ export function Dashboard() {
       monthWeights: weights,
       multiplier,
       estimatedTotalGross: currentYtdGross * multiplier,
+      estimatedTotalFiscal: currentYtdFiscal * multiplier,
       estimatedTotalNights: Math.round(currentYtdNights * multiplier),
     };
   }, [years, distributedDays]);
@@ -390,7 +392,7 @@ export function Dashboard() {
     return {
       nights: Math.round(yearDataToDate.nights * multiplier),
       gross: yearDataToDate.gross * multiplier,
-      fiscalGross: yearDataToDate.fiscalGross * multiplier,
+      fiscalGross: projectionMetrics.estimatedTotalFiscal,
       net: yearDataToDate.net * multiplier,
       platformStats: projectedPlatformStats,
       occupancyRate: Math.min(100, yearDataToDate.occupancyRate), // keep it as is, it's an average
@@ -416,6 +418,7 @@ export function Dashboard() {
       if (selectedYear === currentYearStr && index > currentMonthIndex) {
          // Projeté
          const projGross = projectionMetrics.estimatedTotalGross * projectionMetrics.monthWeights[index];
+         const projFiscal = projectionMetrics.estimatedTotalFiscal * projectionMetrics.monthWeights[index];
          const projNights = Math.round(projectionMetrics.estimatedTotalNights * projectionMetrics.monthWeights[index]);
          
          const variableCharges = projNights * yTaxes.chargeParNuit;
@@ -423,12 +426,13 @@ export function Dashboard() {
          const estimatedTaxes = projGross * (yTaxes.abattementRate / 100) * (yTaxes.csgRate / 100);
          const net = projGross - estimatedTaxes - variableCharges - fixedCharges;
          
-         return { name: monthName, gross: projGross, net: net, status: 'projeté' };
+         return { name: monthName, gross: projGross, fiscalGross: projFiscal, net: net, status: 'projeté' };
       } else {
          const days = yearData.yearDays.filter((d) =>
            d.date.startsWith(monthPrefix),
          );
          const gross = days.reduce((acc, curr) => acc + curr.amount, 0);
+         const fiscalGross = days.reduce((acc, curr) => acc + curr.fiscalAmount, 0);
          const nights = days.length;
 
          const blackGross = days
@@ -451,7 +455,7 @@ export function Dashboard() {
              status = 'à date';
          }
 
-         return { name: monthName, gross, net, status };
+         return { name: monthName, gross, fiscalGross, net, status };
       }
     });
   }, [yearData.yearDays, selectedYear, state.settings, projectionMetrics]);
@@ -1597,19 +1601,26 @@ export function Dashboard() {
               <tr>
                 <th
                   scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4"
                 >
                   Mois
                 </th>
                 <th
                   scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3"
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4"
                 >
                   Brut
                 </th>
                 <th
                   scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3"
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4"
+                  title="Somme payée par le client (hors plateformes exclues du calcul fiscal)"
+                >
+                  Montant Client
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4"
                 >
                   Net
                 </th>
@@ -1635,6 +1646,9 @@ export function Dashboard() {
                     {Math.round(m.gross)} €
                   </td>
                   <td className="px-6 py-3 text-sm font-bold text-gray-700 text-right">
+                    {Math.round(m.fiscalGross)} €
+                  </td>
+                  <td className="px-6 py-3 text-sm font-bold text-gray-700 text-right">
                     {Math.round(m.net)} €
                   </td>
                 </tr>
@@ -1647,6 +1661,9 @@ export function Dashboard() {
                   {Math.round(yearData.gross)} €
                 </td>
                 <td className="px-6 py-4 text-sm font-bold text-gray-900 text-right">
+                  {Math.round(yearData.fiscalGross)} €
+                </td>
+                <td className="px-6 py-4 text-sm font-bold text-gray-900 text-right">
                   {Math.round(yearData.net)} €
                 </td>
               </tr>
@@ -1657,6 +1674,9 @@ export function Dashboard() {
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-blue-800 text-right">
                     {Math.round(projectedYearData.gross)} €
+                  </td>
+                  <td className="px-6 py-4 text-sm font-bold text-blue-800 text-right">
+                    {Math.round(projectedYearData.fiscalGross)} €
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-blue-800 text-right">
                     {Math.round(projectedYearData.net)} €
